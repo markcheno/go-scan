@@ -13,74 +13,87 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type Tickers []string
+// StringList is a custom flag type for a list of strings
+type StringList []string
 
-func (t *Tickers) UnmarshalYAML(unmarshal func(interface{}) error) error {
+// Implement the yaml.Unmarshaler interface
+func (sl *StringList) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var single string
 	var list []string
 
 	// Try to unmarshal as a single string
 	if err := unmarshal(&single); err == nil {
-		*t = strings.Split(single, ",")
+		if strings.Contains(single, "|") {
+			*sl = strings.Split(single, "|")
+		} else {
+			*sl = strings.Split(single, ",")
+		}
 		return nil
 	}
 
 	// Try to unmarshal as a list of strings
 	if err := unmarshal(&list); err == nil {
-		*t = list
+		*sl = list
 		return nil
 	}
 
-	return fmt.Errorf("failed to unmarshal tickers")
-}
-
-// Implement the flag.Value interface
-func (t *Tickers) String() string {
-	return strings.Join(*t, ",")
-}
-
-func (t *Tickers) Set(value string) error {
-	*t = strings.Split(value, ",")
 	return nil
 }
 
-type ScanFlags struct {
-	ConfigFile  string  `yaml:"-"`
-	SaveConfig  bool    `yaml:"-"`
-	StartDate   string  `yaml:"start_date"`
-	EndDate     string  `yaml:"end_date"`
-	Outfile     string  `yaml:"outfile"`
-	Columns     string  `yaml:"columns"`
-	DropColumns string  `yaml:"drop_columns"`
-	Truncate    int     `yaml:"truncate"`
-	Source      string  `yaml:"source"`
-	Token       string  `yaml:"token"`
-	Tickers     Tickers `yaml:"tickers"`
-	Market      string  `yaml:"market"`
-	SplitPct    float64 `yaml:"split_pct"`
-	ListMarkets bool    `yaml:"-"`
-	ListTA      bool    `yaml:"-"`
+// Implement the flag.Value interface
+func (sl *StringList) String() string {
+	return strings.Join(*sl, "|")
 }
 
+func (sl *StringList) Set(value string) error {
+	*sl = strings.Split(value, "|")
+	return nil
+}
+
+// ScanFlags is a struct to hold the command line flags
+type ScanFlags struct {
+	ConfigFile  string     `yaml:"-"`
+	SaveConfig  bool       `yaml:"-"`
+	TiingoToken string     `yaml:"-"`
+	ListMarkets bool       `yaml:"-"`
+	ListTA      bool       `yaml:"-"`
+	Logfile     string     `yaml:"logfile"`
+	Outfile     string     `yaml:"outfile"`
+	StartDate   string     `yaml:"start_date"`
+	EndDate     string     `yaml:"end_date"`
+	Filter      string     `yaml:"filter"`
+	Source      string     `yaml:"source"`
+	Tickers     StringList `yaml:"tickers"`
+	Market      string     `yaml:"market"`
+	Columns     StringList `yaml:"columns"`
+	DropColumns string     `yaml:"drop_columns"`
+	Truncate    int        `yaml:"truncate"`
+	SplitPct    float64    `yaml:"split_pct"`
+}
+
+// ScanFlags is a global variable to hold the command line flags
 var flags ScanFlags
 
+// init initializes the command line flags
 func init() {
 	today := time.Now().Format("2006-01-02")
-	flag.StringVar(&flags.ConfigFile, "config", "scan.yaml", "yaml config file")
+	flag.StringVar(&flags.ConfigFile, "config", "scan.yaml", "Yaml config file")
 	flag.BoolVar(&flags.SaveConfig, "save", false, "Save the config to a file")
+	flag.StringVar(&flags.TiingoToken, "tiingo-token", os.Getenv("TIINGO_API_TOKEN"), "tiingo api token")
+	flag.BoolVar(&flags.ListMarkets, "list-markets", false, "List available markets")
+	flag.BoolVar(&flags.ListTA, "list-ta", false, "List available technical analysis functions")
+	flag.StringVar(&flags.Logfile, "log", "", "Log file")
 	flag.StringVar(&flags.StartDate, "start", "2024-01-01", "Start date")
 	flag.StringVar(&flags.EndDate, "end", today, "End date")
 	flag.StringVar(&flags.Outfile, "outfile", "output.csv", "Output CSV file")
-	flag.StringVar(&flags.Columns, "columns", "", "sma20=sma(c,20)|rsi2=rsi(c,2) (use --list-ta to see available functions)")
+	flag.Var(&flags.Columns, "columns", "sma20=sma(c,20)|rsi2=rsi(c,2) (Pipe separated columns to add, use --list-ta to see available functions)")
 	flag.StringVar(&flags.DropColumns, "drop-columns", "", "Comma-separated list of columns to drop")
 	flag.IntVar(&flags.Truncate, "truncate", 0, "Number of rows to truncate from the beginning")
+	flag.StringVar(&flags.Filter, "filter", "", "filter expression to apply to last column of each ticker")
 	flag.StringVar(&flags.Source, "source", "yahoo", "Data source (yahoo|tiingo|tiingo-crypto|coinbase)")
-	flag.StringVar(&flags.Token, "token", os.Getenv("TIINGO_API_TOKEN"), "tiingo api token")
 	flag.Var(&flags.Tickers, "tickers", "Comma-separated list of tickers")
 	flag.StringVar(&flags.Market, "market", "", "Market to fetch data from (use --list-markets to see available markets)")
 	flag.Float64Var(&flags.SplitPct, "split-pct", 0, "Percentage of data to use for training")
-	flag.BoolVar(&flags.ListMarkets, "list-markets", false, "List available markets")
-	flag.BoolVar(&flags.ListTA, "list-ta", false, "List available technical analysis functions")
 }
 
 // loadConfig loads the configuration from a YAML file
@@ -89,7 +102,7 @@ func loadConfig(filename string, config *ScanFlags) {
 	if err != nil {
 		return
 	}
-
+	log.Println("Loading config from: ", filename)
 	if err := yaml.Unmarshal(data, config); err != nil {
 		log.Fatalf("failed to unmarshal data: %v", err)
 	}
@@ -103,18 +116,19 @@ func saveConfig(path string, config *ScanFlags) error {
 		return err
 	}
 	defer file.Close()
-
+	log.Println("Saving config to: ", path)
 	encoder := yaml.NewEncoder(file)
 	return encoder.Encode(config)
 }
 
+// parseUserColumns parses the user columns and returns an OrderedMap
 func parseUserColumns() (*OrderedMap, error) {
 	orderedMap := NewOrderedMap()
-	if flags.Columns == "" {
+	if len(flags.Columns) == 0 {
 		return orderedMap, nil
 	}
 
-	columnList := strings.Split(flags.Columns, "|")
+	columnList := strings.Split(flags.Columns.String(), "|")
 
 	for _, column := range columnList {
 		params := strings.Split(column, "=")
@@ -126,22 +140,24 @@ func parseUserColumns() (*OrderedMap, error) {
 	return orderedMap, nil
 }
 
-func getQuoteColumns(quote quote.Quote, columnMap *OrderedMap) (*OrderedMap, error) {
+// getColumns returns a map of columns for the specified quote
+func getColumns(quote quote.Quote, columnMap *OrderedMap) (*OrderedMap, error) {
 	orderedMap := NewOrderedMap()
 	if columnMap.IsEmpty() {
 		return orderedMap, nil
 	}
-	for _, col := range columnMap.Keys() {
-		expr, _ := columnMap.Data()[col].(string)
-		result, err := ExprWithQuote(quote, expr)
+	for _, column := range columnMap.Keys() {
+		expr, _ := columnMap.Data()[column].(string)
+		result, err := GetColumn(quote, expr)
 		if err != nil {
 			return nil, err
 		}
-		orderedMap.Set(col, result)
+		orderedMap.Set(column, result)
 	}
 	return orderedMap, nil
 }
 
+// writeToCSV writes the 2D slice to a CSV file
 func writeToCSV(filename string, allRows [][]string) error {
 	file, err := os.Create(filename)
 	if err != nil {
@@ -152,6 +168,7 @@ func writeToCSV(filename string, allRows [][]string) error {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
+	log.Println("Writing to: ", filename)
 	for _, record := range allRows {
 		err := writer.Write(record)
 		if err != nil {
@@ -182,7 +199,21 @@ func main() {
 	var err error
 	var tickers []string
 
+	// Parse command line flags
 	flag.Parse()
+
+	// Set up logging
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	log.Printf("Logfile: %s", flags.Logfile)
+	if flags.Logfile != "" {
+		logfile, err := os.OpenFile(flags.Logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			log.Fatalf("Failed to open log file: %v", err)
+		}
+		defer logfile.Close()
+		log.SetOutput(logfile)
+	}
 
 	// Display help text if no flags are provided
 	if len(os.Args) == 1 {
@@ -209,10 +240,14 @@ func main() {
 
 	if flags.ListTA {
 		fmt.Println("Available technical analysis functions:")
-		for _, ta := range GetTaFuncs() {
+		for _, ta := range GetTA() {
 			fmt.Printf("\t%s\n", ta.Desc)
 		}
 		return
+	}
+
+	if (flags.Source == "tiingo" || flags.Source == "tiingo-crypto") && flags.TiingoToken == "" {
+		log.Fatalf("Tiingo token is required")
 	}
 
 	if flags.Market != "" {
@@ -226,7 +261,7 @@ func main() {
 	}
 
 	if len(flags.Tickers) > 0 {
-		tickers = flags.Tickers
+		tickers = append(tickers, flags.Tickers...)
 	}
 
 	if !strings.HasSuffix(flags.Outfile, ".csv") {
@@ -267,24 +302,24 @@ func main() {
 		if flags.Source == "yahoo" {
 			q, err = quote.NewQuoteFromYahoo(ticker, flags.StartDate, flags.EndDate, "d", true)
 		} else if flags.Source == "tiingo" {
-			q, err = quote.NewQuoteFromTiingo(ticker, flags.StartDate, flags.EndDate, flags.Token)
+			q, err = quote.NewQuoteFromTiingo(ticker, flags.StartDate, flags.EndDate, flags.TiingoToken)
 		} else if flags.Source == "tiingo-crypto" {
-			q, err = quote.NewQuoteFromTiingoCrypto(ticker, flags.StartDate, flags.EndDate, "d", flags.Token)
+			q, err = quote.NewQuoteFromTiingoCrypto(ticker, flags.StartDate, flags.EndDate, "d", flags.TiingoToken)
 		} else if flags.Source == "coinbase" {
 			q, err = quote.NewQuoteFromCoinbase(ticker, flags.StartDate, flags.EndDate, "d")
 		} else {
 			log.Fatalf("Invalid source: %s", flags.Source)
 		}
-
 		if err != nil {
 			log.Fatalf("Failed to fetch data for %s: %v", ticker, err)
 		}
-		columns, err := getQuoteColumns(q, columnMap)
+
+		columns, err := getColumns(q, columnMap)
 		if err != nil {
 			log.Fatalf("Failed to add columns for %s: %v", ticker, err)
 		}
 
-		// for i := range q.Date {
+		var tickerRows [][]string
 		for i := flags.Truncate; i < len(q.Date); i++ {
 			record := []string{
 				q.Symbol,
@@ -301,13 +336,25 @@ func main() {
 				}
 				record = append(record, fmt.Sprintf("%f", columns.Data()[col].([]float64)[i]))
 			}
-			allRows = append(allRows, record)
+			tickerRows = append(tickerRows, record)
 
-			if i < int(float64(len(q.Date))*flags.SplitPct) {
-				trainingRows = append(trainingRows, record)
-			} else {
-				testingRows = append(testingRows, record)
+			if flags.SplitPct > 0 {
+				if i < int(float64(len(q.Date))*flags.SplitPct) {
+					trainingRows = append(trainingRows, record)
+				} else {
+					testingRows = append(testingRows, record)
+				}
 			}
+		}
+		addticker, err := EvalFilter(flags.Filter, headers, tickerRows[len(tickerRows)-1])
+		if err != nil {
+			log.Fatalf("Failed to evaluate filter: %v", err)
+		}
+		if addticker {
+			log.Printf("Saving: %s\n", ticker)
+			allRows = append(allRows, tickerRows...)
+		} else {
+			log.Printf("Excluding: %s\n", ticker)
 		}
 	}
 
@@ -317,8 +364,10 @@ func main() {
 			for j, header := range allRows[0] {
 				if strings.EqualFold(header, col) {
 					allRows = dropColumn(allRows, j)
-					trainingRows = dropColumn(trainingRows, j)
-					testingRows = dropColumn(testingRows, j)
+					if flags.SplitPct > 0 {
+						trainingRows = dropColumn(trainingRows, j)
+						testingRows = dropColumn(testingRows, j)
+					}
 				}
 			}
 		}

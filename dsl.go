@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/markcheno/go-quote"
 	"github.com/markcheno/go-talib"
@@ -13,12 +14,14 @@ import (
 
 var e *env.Env
 
+// funcDefinition is a struct that holds the name, function and description of a function
 type funcDefinition struct {
 	Name string
 	Fn   interface{}
 	Desc string
 }
 
+// TA functions from go-talib
 var taFunctions = []funcDefinition{
 	{"SMA", talib.SMA, "SMA // simple moving average type"},
 	{"EMA", talib.EMA, "EMA // exponential moving average type"},
@@ -126,36 +129,94 @@ var taFunctions = []funcDefinition{
 	{"mult", talib.Mult, "mult(series1,series2) // Vector arithmetic multiply"},
 	{"sub", talib.Sub, "sub(series1,series2) // Vector arithmetic subtraction"},
 	{"sum", talib.Sum, "sum(series,period) // Vector summation"},
-	{"gt", Gt, "gt(series1,series2) // Vector greater than"},
-	{"lt", Lt, "lt(series1,series2) // Vector less than"},
-	{"gte", Gte, "gte(series1,series2) // Vector greater than or equal"},
-	{"lte", Lte, "lte(series1,series2) // Vector less than or equal"},
+	{"gt", gt, "gt(series1,series2) // Vector greater than"},
+	{"lt", lt, "lt(series1,series2) // Vector less than"},
+	{"gte", gte, "gte(series1,series2) // Vector greater than or equal"},
+	{"lte", lte, "lte(series1,series2) // Vector less than or equal"},
 }
 
+// Suplementary functions
+
+// gt performs element-wise greater-than comparison of two float64 arrays
+func gt(a, b []float64) []float64 {
+	result := make([]float64, len(a))
+	for i := range a {
+		if a[i] > b[i] {
+			result[i] = 1.0
+		} else {
+			result[i] = 0.0
+		}
+	}
+	return result
+}
+
+// lt performs element-wise less-than comparison of two float64 arrays
+func lt(a, b []float64) []float64 {
+	result := make([]float64, len(a))
+	for i := range a {
+		if a[i] < b[i] {
+			result[i] = 1.0
+		} else {
+			result[i] = 0.0
+		}
+	}
+	return result
+}
+
+// gte performs element-wise greater-than-or-equal-to comparison of two float64 arrays
+func gte(a, b []float64) []float64 {
+	result := make([]float64, len(a))
+	for i := range a {
+		if a[i] >= b[i] {
+			result[i] = 1.0
+		} else {
+			result[i] = 0.0
+		}
+	}
+	return result
+}
+
+// lte performs element-wise less-than-or-equal-to comparison of two float64 arrays
+func lte(a, b []float64) []float64 {
+	result := make([]float64, len(a))
+	for i := range a {
+		if a[i] <= b[i] {
+			result[i] = 1.0
+		} else {
+			result[i] = 0.0
+		}
+	}
+	return result
+}
+
+// define is a helper function that logs an error if it is not nil
 func define(err error) {
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}
 }
 
+// init initializes the environment and defines the functions
 func init() {
 	e = env.NewEnv()
 
-	define(e.Define("gt", Gt))
-	define(e.Define("lt", Lt))
-	define(e.Define("gte", Gte))
-	define(e.Define("lte", Lte))
+	define(e.Define("gt", gt))
+	define(e.Define("lt", lt))
+	define(e.Define("gte", gte))
+	define(e.Define("lte", lte))
 
 	for _, f := range taFunctions {
 		define(e.Define(f.Name, f.Fn))
 	}
 }
 
-func GetTaFuncs() []funcDefinition {
+// GetTA returns the list of technical analysis functions
+func GetTA() []funcDefinition {
 	return taFunctions
 }
 
-func ExprWithQuote(quote quote.Quote, expr string) ([]float64, error) {
+// GetColumn returns the result of evaluating an expression on a quote
+func GetColumn(quote quote.Quote, expr string) ([]float64, error) {
 
 	err := e.Define("d", quote.Date)
 	if err != nil {
@@ -204,54 +265,50 @@ func ExprWithQuote(quote quote.Quote, expr string) ([]float64, error) {
 	return exportedResults, nil
 }
 
-// Gt performs element-wise greater-than comparison of two float64 arrays
-func Gt(a, b []float64) []float64 {
-	result := make([]float64, len(a))
-	for i := range a {
-		if a[i] > b[i] {
-			result[i] = 1.0
-		} else {
-			result[i] = 0.0
-		}
-	}
-	return result
+func replaceReservedWord(expr, word string) string {
+	return strings.ReplaceAll(expr, word, fmt.Sprintf("_%v", word))
 }
 
-// Lt performs element-wise less-than comparison of two float64 arrays
-func Lt(a, b []float64) []float64 {
-	result := make([]float64, len(a))
-	for i := range a {
-		if a[i] < b[i] {
-			result[i] = 1.0
-		} else {
-			result[i] = 0.0
-		}
-	}
-	return result
+func replaceReservedWords(expr string) string {
+	expr = replaceReservedWord(expr, "open")
+	expr = replaceReservedWord(expr, "high")
+	expr = replaceReservedWord(expr, "low")
+	expr = replaceReservedWord(expr, "close")
+	expr = replaceReservedWord(expr, "date")
+	return expr
 }
 
-// Gte performs element-wise greater-than-or-equal-to comparison of two float64 arrays
-func Gte(a, b []float64) []float64 {
-	result := make([]float64, len(a))
-	for i := range a {
-		if a[i] >= b[i] {
-			result[i] = 1.0
-		} else {
-			result[i] = 0.0
-		}
-	}
-	return result
-}
+// EvalFilter evaluates a filter expression on a row
+func EvalFilter(filter string, header, row []string) (bool, error) {
 
-// Lte performs element-wise less-than-or-equal-to comparison of two float64 arrays
-func Lte(a, b []float64) []float64 {
-	result := make([]float64, len(a))
-	for i := range a {
-		if a[i] <= b[i] {
-			result[i] = 1.0
-		} else {
-			result[i] = 0.0
-		}
+	if filter == "" {
+		return true, nil
 	}
-	return result
+	filter = replaceReservedWords(filter)
+
+	// Define the variables
+	for idx, name := range header {
+		name = replaceReservedWords(name)
+		//fmt.Printf("defining: name: %v, value: %v\n", name, row[idx])
+		define(e.Define(string(name), row[idx]))
+	}
+
+	// Execute the expression
+	_, err := vm.Execute(e, nil, "result="+filter)
+	if err != nil {
+		//fmt.Printf("filter: %v\n", filter)
+		return false, fmt.Errorf("execute error: %v", err)
+	}
+
+	// Get the result
+	var results interface{}
+	results, err = e.Get("result")
+	if err != nil {
+		return false, fmt.Errorf("get error: %v", err)
+	}
+	exportedResults, ok := results.(bool)
+	if !ok {
+		return false, fmt.Errorf("type assertion error: %v", err)
+	}
+	return exportedResults, nil
 }

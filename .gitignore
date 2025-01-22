@@ -1,0 +1,5 @@
+scan
+*.csv
+*.yaml
+*.yml
+.vscode

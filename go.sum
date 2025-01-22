@@ -1,0 +1,10 @@
+github.com/markcheno/go-quote v0.0.0-20240929161446-cb6fe2a2e6f8 h1:xjHmqImiMRzNrbkazP9e+EyplWAk36Gfza1IeLag72g=
+github.com/markcheno/go-quote v0.0.0-20240929161446-cb6fe2a2e6f8/go.mod h1:XkWzl73UMsPUypTth1MHbTnSW6ydpD5qHdearJq3eaI=
+github.com/markcheno/go-talib v0.0.0-20250114000313-ec55a20c902f h1:iKq//xEUUaeRoXNcAshpK4W8eSm7HtgI0aNznWtX7lk=
+github.com/markcheno/go-talib v0.0.0-20250114000313-ec55a20c902f/go.mod h1:3YUtoVrKWu2ql+iAeRyepSz3fy6a+19hJzGS88+u4u0=
+github.com/mattn/anko v0.1.9 h1:OpdRDvjOY/FQXoGXkN0n7b0br4a4fHB5hhsaq0Cd3ds=
+github.com/mattn/anko v0.1.9/go.mod h1:gjrudvzf1t7FWTZo1Nbywnr75g3uDnGjXdp2nkguBjQ=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/yaml.v2 v2.4.0 h1:D8xgwECY7CYvx+Y2n4sBz93Jn9JRvxdiyyo8CTfuKaY=
+gopkg.in/yaml.v2 v2.4.0/go.mod h1:RDklbk79AGWmwhnvt/jBztapEOGDOx6ZbXqjP6csGnQ=

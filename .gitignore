@@ -4,3 +4,4 @@ scan
 *.yml
 *.log
 .vscode
+.DS_Store

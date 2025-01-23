@@ -207,7 +207,9 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Printf("Logfile: %s", flags.Logfile)
 	if flags.Logfile != "" {
-		logfile, err := os.OpenFile(flags.Logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		//logfile, err := os.OpenFile(flags.Logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		logfile, err := os.OpenFile(flags.Logfile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+
 		if err != nil {
 			log.Fatalf("Failed to open log file: %v", err)
 		}

@@ -148,7 +148,7 @@ func getColumns(quote quote.Quote, columnMap *OrderedMap) (*OrderedMap, error) {
 	}
 	for _, column := range columnMap.Keys() {
 		expr, _ := columnMap.Data()[column].(string)
-		result, err := GetColumn(quote, expr)
+		result, err := GetColumn(quote, column, expr)
 		if err != nil {
 			return nil, err
 		}

@@ -133,6 +133,7 @@ var taFunctions = []funcDefinition{
 	{"lt", lt, "lt(series1,series2) // Vector less than"},
 	{"gte", gte, "gte(series1,series2) // Vector greater than or equal"},
 	{"lte", lte, "lte(series1,series2) // Vector less than or equal"},
+	{"lag", lag, "lag(series,period) // Lag series by period"},
 }
 
 // Suplementary functions
@@ -189,8 +190,22 @@ func lte(a, b []float64) []float64 {
 	return result
 }
 
-// define is a helper function that logs an error if it is not nil
-func define(err error) {
+// lag lags a float64 array by a given period
+func lag(a []float64, period int) []float64 {
+	result := make([]float64, len(a))
+	for i := range a {
+		if i-period >= 0 {
+			result[i] = a[i-period]
+		} else {
+			result[i] = 0.0
+		}
+	}
+	return result
+}
+
+// define defines a symbol in the environment
+func define(symbol string, value interface{}) {
+	err := e.Define(symbol, value)
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}
@@ -199,14 +214,13 @@ func define(err error) {
 // init initializes the environment and defines the functions
 func init() {
 	e = env.NewEnv()
-
-	define(e.Define("gt", gt))
-	define(e.Define("lt", lt))
-	define(e.Define("gte", gte))
-	define(e.Define("lte", lte))
-
+	define("gt", gt)
+	define("lt", lt)
+	define("gte", gte)
+	define("lte", lte)
+	define("lag", lag)
 	for _, f := range taFunctions {
-		define(e.Define(f.Name, f.Fn))
+		define(f.Name, f.Fn)
 	}
 }
 
@@ -216,39 +230,16 @@ func GetTA() []funcDefinition {
 }
 
 // GetColumn returns the result of evaluating an expression on a quote
-func GetColumn(quote quote.Quote, expr string) ([]float64, error) {
+func GetColumn(quote quote.Quote, column, expr string) ([]float64, error) {
 
-	err := e.Define("d", quote.Date)
-	if err != nil {
-		return nil, fmt.Errorf("define error: %v", err)
-	}
+	define("d", quote.Date)
+	define("o", quote.Open)
+	define("h", quote.High)
+	define("l", quote.Low)
+	define("c", quote.Close)
+	define("v", quote.Volume)
 
-	err = e.Define("o", quote.Open)
-	if err != nil {
-		return nil, fmt.Errorf("define error: %v", err)
-	}
-
-	err = e.Define("h", quote.High)
-	if err != nil {
-		return nil, fmt.Errorf("define error: %v", err)
-	}
-
-	err = e.Define("l", quote.Low)
-	if err != nil {
-		return nil, fmt.Errorf("define error: %v", err)
-	}
-
-	err = e.Define("c", quote.Close)
-	if err != nil {
-		return nil, fmt.Errorf("define error: %v", err)
-	}
-
-	err = e.Define("v", quote.Volume)
-	if err != nil {
-		return nil, fmt.Errorf("define error: %v", err)
-	}
-
-	_, err = vm.Execute(e, nil, "result="+expr)
+	_, err := vm.Execute(e, nil, "result="+expr)
 	if err != nil {
 		return nil, fmt.Errorf("execute error: %v", err)
 	}
@@ -262,6 +253,9 @@ func GetColumn(quote quote.Quote, expr string) ([]float64, error) {
 	if !ok {
 		return nil, fmt.Errorf("type assertion error: %v", err)
 	}
+	// Define the column
+	define(column, exportedResults)
+
 	return exportedResults, nil
 }
 
@@ -290,7 +284,7 @@ func EvalFilter(filter string, header, row []string) (bool, error) {
 	for idx, name := range header {
 		name = replaceReservedWords(name)
 		//fmt.Printf("defining: name: %v, value: %v\n", name, row[idx])
-		define(e.Define(string(name), row[idx]))
+		define(string(name), row[idx])
 	}
 
 	// Execute the expression

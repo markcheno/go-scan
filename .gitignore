@@ -1,5 +1,7 @@
 scan
+*.h5
 *.csv
+*.txt
 *.yaml
 *.yml
 *.log

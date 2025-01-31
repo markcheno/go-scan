@@ -53,24 +53,25 @@ func (sl *StringList) Set(value string) error {
 
 // ScanFlags is a struct to hold the command line flags
 type ScanFlags struct {
-	ConfigFile  string     `yaml:"-"`
-	SaveConfig  bool       `yaml:"-"`
-	TiingoToken string     `yaml:"-"`
-	ListMarkets bool       `yaml:"-"`
-	ListTA      bool       `yaml:"-"`
-	Logfile     string     `yaml:"logfile"`
-	Outfile     string     `yaml:"outfile"`
-	StartDate   string     `yaml:"start_date"`
-	EndDate     string     `yaml:"end_date"`
-	Filter      string     `yaml:"filter"`
-	Source      string     `yaml:"source"`
-	Tickers     StringList `yaml:"tickers"`
-	Market      string     `yaml:"market"`
-	Columns     StringList `yaml:"columns"`
-	DropColumns string     `yaml:"drop_columns"`
-	Truncate    int        `yaml:"truncate"`
-	Pivot       bool       `yaml:"pivot"`
-	SplitPct    float64    `yaml:"split_pct"`
+	ConfigFile   string     `yaml:"-"`
+	SaveConfig   bool       `yaml:"-"`
+	TiingoToken  string     `yaml:"-"`
+	ListMarkets  bool       `yaml:"-"`
+	ListTA       bool       `yaml:"-"`
+	Logfile      string     `yaml:"logfile"`
+	Outfile      string     `yaml:"outfile"`
+	StartDate    string     `yaml:"start_date"`
+	EndDate      string     `yaml:"end_date"`
+	Filter       string     `yaml:"filter"`
+	Source       string     `yaml:"source"`
+	Tickers      StringList `yaml:"tickers"`
+	Market       string     `yaml:"market"`
+	Columns      StringList `yaml:"columns"`
+	DropColumns  string     `yaml:"drop_columns"`
+	TargetColumn string     `yaml:"target_column"`
+	Truncate     int        `yaml:"truncate"`
+	Pivot        bool       `yaml:"pivot"`
+	SplitPct     float64    `yaml:"split_pct"`
 }
 
 // ScanFlags is a global variable to hold the command line flags
@@ -90,6 +91,7 @@ func init() {
 	flag.StringVar(&flags.Outfile, "outfile", "output.csv", "Output CSV file")
 	flag.Var(&flags.Columns, "columns", "sma20=sma(c,20)|rsi2=rsi(c,2) (Pipe separated columns to add, use --list-ta to see available functions)")
 	flag.StringVar(&flags.DropColumns, "drop-columns", "", "Comma-separated list of columns to drop")
+	flag.StringVar(&flags.TargetColumn, "target-column", "", "Target column (other target columns will be dropped when pivoting)")
 	flag.IntVar(&flags.Truncate, "truncate", 0, "Number of rows to truncate from the beginning")
 	flag.BoolVar(&flags.Pivot, "pivot", false, "Pivot the data")
 	flag.StringVar(&flags.Filter, "filter", "", "filter expression to apply to last column of each ticker")
@@ -198,7 +200,7 @@ func dropColumn(data [][]string, colIndex int) [][]string {
 	return newData
 }
 
-// PivotTable transforms a table into a pivoted format - Claude for the win!
+// PivotTable transforms a table into a pivoted format
 // indexCol specifies which column to use as the index (row labels)
 // pivotCol specifies which column values will become new columns
 func pivot(input [][]string, indexCol, pivotCol string) [][]string {
@@ -491,6 +493,16 @@ func main() {
 		if flags.SplitPct > 0 {
 			trainingRows = pivot(trainingRows, "date", "symbol")
 			testingRows = pivot(testingRows, "date", "symbol")
+		}
+		for j, header := range allRows[0] {
+			if flags.TargetColumn != "" && strings.Contains(header, "target") && flags.TargetColumn != header {
+				fmt.Println("Dropping: ", header)
+				allRows = dropColumn(allRows, j)
+				if flags.SplitPct > 0 {
+					trainingRows = dropColumn(trainingRows, j)
+					testingRows = dropColumn(testingRows, j)
+				}
+			}
 		}
 	}
 

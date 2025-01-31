@@ -134,6 +134,7 @@ var taFunctions = []funcDefinition{
 	{"gte", gte, "gte(series1,series2) // Vector greater than or equal"},
 	{"lte", lte, "lte(series1,series2) // Vector less than or equal"},
 	{"lag", lag, "lag(series,period) // Lag series by period"},
+	{"shift", shift, "shift(series,period) // Shift series by period"},
 }
 
 // Suplementary functions
@@ -196,6 +197,23 @@ func lag(a []float64, period int) []float64 {
 	for i := range a {
 		if i-period >= 0 {
 			result[i] = a[i-period]
+		} else {
+			result[i] = 0.0
+		}
+	}
+	return result
+}
+
+// shift shifts a float64 array forward or backward by a given period
+// Forward shifts have negative periods, backward shifts have positive periods
+func shift(a []float64, period int) []float64 {
+	result := make([]float64, len(a))
+	n := len(a)
+
+	for i := range a {
+		newIndex := i - period
+		if newIndex >= 0 && newIndex < n {
+			result[i] = a[newIndex]
 		} else {
 			result[i] = 0.0
 		}

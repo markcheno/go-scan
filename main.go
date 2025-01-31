@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -68,6 +69,7 @@ type ScanFlags struct {
 	Columns     StringList `yaml:"columns"`
 	DropColumns string     `yaml:"drop_columns"`
 	Truncate    int        `yaml:"truncate"`
+	Pivot       bool       `yaml:"pivot"`
 	SplitPct    float64    `yaml:"split_pct"`
 }
 
@@ -89,6 +91,7 @@ func init() {
 	flag.Var(&flags.Columns, "columns", "sma20=sma(c,20)|rsi2=rsi(c,2) (Pipe separated columns to add, use --list-ta to see available functions)")
 	flag.StringVar(&flags.DropColumns, "drop-columns", "", "Comma-separated list of columns to drop")
 	flag.IntVar(&flags.Truncate, "truncate", 0, "Number of rows to truncate from the beginning")
+	flag.BoolVar(&flags.Pivot, "pivot", false, "Pivot the data")
 	flag.StringVar(&flags.Filter, "filter", "", "filter expression to apply to last column of each ticker")
 	flag.StringVar(&flags.Source, "source", "yahoo", "Data source (yahoo|tiingo|tiingo-crypto|coinbase)")
 	flag.Var(&flags.Tickers, "tickers", "Comma-separated list of tickers")
@@ -193,6 +196,114 @@ func dropColumn(data [][]string, colIndex int) [][]string {
 		}
 	}
 	return newData
+}
+
+// PivotTable transforms a table into a pivoted format - Claude for the win!
+// indexCol specifies which column to use as the index (row labels)
+// pivotCol specifies which column values will become new columns
+func pivot(input [][]string, indexCol, pivotCol string) [][]string {
+	if len(input) < 2 {
+		return input
+	}
+
+	// Get headers
+	headers := input[0]
+	if len(headers) < 3 {
+		return input
+	}
+
+	// Find index and pivot column positions
+	indexColPos := -1
+	pivotColPos := -1
+	for i, h := range headers {
+		if h == indexCol {
+			indexColPos = i
+		}
+		if h == pivotCol {
+			pivotColPos = i
+		}
+	}
+	if indexColPos == -1 || pivotColPos == -1 {
+		return input // Return original if columns not found
+	}
+
+	// Create maps to store unique indices and pivot values
+	uniqueIndices := make(map[string]bool)
+	uniquePivotVals := make(map[string]bool)
+
+	// Store value column names (everything except index and pivot columns)
+	valueColumns := make([]string, 0)
+	for i, h := range headers {
+		if i != indexColPos && i != pivotColPos {
+			valueColumns = append(valueColumns, h)
+		}
+	}
+
+	// Collect unique indices and pivot values
+	for _, row := range input[1:] {
+		uniqueIndices[row[indexColPos]] = true
+		uniquePivotVals[row[pivotColPos]] = true
+	}
+
+	// Convert maps to sorted slices
+	indices := make([]string, 0, len(uniqueIndices))
+	pivotVals := make([]string, 0, len(uniquePivotVals))
+	for idx := range uniqueIndices {
+		indices = append(indices, idx)
+	}
+	for pval := range uniquePivotVals {
+		pivotVals = append(pivotVals, pval)
+	}
+	sort.Strings(indices)
+	sort.Strings(pivotVals)
+
+	// Create header row for output
+	newHeader := make([]string, 1+len(pivotVals)*len(valueColumns))
+	newHeader[0] = indexCol
+	headerIdx := 1
+	for _, pval := range pivotVals {
+		for _, valCol := range valueColumns {
+			newHeader[headerIdx] = pval + "_" + valCol
+			headerIdx++
+		}
+	}
+
+	// Create map to store values
+	// Key format: index_pivotValue_valueColumn
+	valueMap := make(map[string]string)
+	for _, row := range input[1:] {
+		idx := row[indexColPos]
+		pval := row[pivotColPos]
+		valIdx := 0
+		for i, val := range row {
+			if i != indexColPos && i != pivotColPos {
+				key := idx + "_" + pval + "_" + valueColumns[valIdx]
+				valueMap[key] = val
+				valIdx++
+			}
+		}
+	}
+
+	// Create output matrix
+	result := make([][]string, 1+len(indices))
+	result[0] = newHeader
+
+	// Fill in the data
+	for i, idx := range indices {
+		row := make([]string, 1+len(pivotVals)*len(valueColumns))
+		row[0] = idx
+		colIdx := 1
+		for _, pval := range pivotVals {
+			for _, valCol := range valueColumns {
+				key := idx + "_" + pval + "_" + valCol
+				row[colIdx] = valueMap[key]
+				colIdx++
+			}
+		}
+		result[i+1] = row
+	}
+
+	return result
 }
 
 func main() {
@@ -372,6 +483,14 @@ func main() {
 					}
 				}
 			}
+		}
+	}
+
+	if flags.Pivot {
+		allRows = pivot(allRows, "date", "symbol")
+		if flags.SplitPct > 0 {
+			trainingRows = pivot(trainingRows, "date", "symbol")
+			testingRows = pivot(testingRows, "date", "symbol")
 		}
 	}
 

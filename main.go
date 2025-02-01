@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -164,6 +165,16 @@ func getColumns(quote quote.Quote, columnMap *OrderedMap) (*OrderedMap, error) {
 
 // writeToCSV writes the 2D slice to a CSV file
 func writeToCSV(filename string, allRows [][]string) error {
+
+	// Get the directory part of the filename
+	dir := filepath.Dir(filename)
+
+	// Create the directories if they do not exist
+	err := os.MkdirAll(dir, os.ModePerm)
+	if err != nil {
+		log.Fatalf("failed to create directories: %s, %v", filename, err)
+	}
+
 	file, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -494,13 +505,17 @@ func main() {
 			trainingRows = pivot(trainingRows, "date", "symbol")
 			testingRows = pivot(testingRows, "date", "symbol")
 		}
-		for j, header := range allRows[0] {
-			if flags.TargetColumn != "" && strings.Contains(header, "target") && flags.TargetColumn != header {
-				fmt.Println("Dropping: ", header)
-				allRows = dropColumn(allRows, j)
-				if flags.SplitPct > 0 {
-					trainingRows = dropColumn(trainingRows, j)
-					testingRows = dropColumn(testingRows, j)
+		//
+		if flags.TargetColumn != "" {
+			// Drop all target columns except the specified one
+			for j, header := range allRows[0] {
+				if strings.Contains(header, "target") && flags.TargetColumn != header {
+					//fmt.Println("Dropping: ", header)
+					allRows = dropColumn(allRows, j)
+					if flags.SplitPct > 0 {
+						trainingRows = dropColumn(trainingRows, j)
+						testingRows = dropColumn(testingRows, j)
+					}
 				}
 			}
 		}

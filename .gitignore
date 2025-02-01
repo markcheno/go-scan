@@ -7,3 +7,5 @@ scan
 *.log
 .vscode
 .DS_Store
+notebooks
+data

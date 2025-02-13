@@ -78,6 +78,10 @@ type ScanFlags struct {
 // ScanFlags is a global variable to hold the command line flags
 var flags ScanFlags
 
+var (
+	Version = "dev"
+)
+
 // init initializes the command line flags
 func init() {
 	today := time.Now().Format("2006-01-02")
@@ -345,6 +349,11 @@ func main() {
 	if len(os.Args) == 1 {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	if version := flag.Bool("version", false, "Print version information"); *version {
+		fmt.Printf("go-scan version %s\n", Version)
+		os.Exit(0)
 	}
 
 	loadConfig(flags.ConfigFile, &flags)

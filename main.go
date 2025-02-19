@@ -85,7 +85,7 @@ var (
 // init initializes the command line flags
 func init() {
 	today := time.Now().Format("2006-01-02")
-	flag.StringVar(&flags.ConfigFile, "config", "scan.yaml", "Yaml config file")
+	flag.StringVar(&flags.ConfigFile, "config", "", "Yaml config file")
 	flag.BoolVar(&flags.SaveConfig, "save", false, "Save the config to a file")
 	flag.StringVar(&flags.TiingoToken, "tiingo-token", os.Getenv("TIINGO_API_TOKEN"), "tiingo api token")
 	flag.BoolVar(&flags.ListMarkets, "list-markets", false, "List available markets")
@@ -356,13 +356,15 @@ func main() {
 		os.Exit(0)
 	}
 
-	loadConfig(flags.ConfigFile, &flags)
-
 	if flags.SaveConfig {
 		err = saveConfig(flags.ConfigFile, &flags)
 		if err != nil {
 			log.Fatalf("Failed to save config: %v", err)
 		}
+	}
+
+	if flags.ConfigFile != "" {
+		loadConfig(flags.ConfigFile, &flags)
 	}
 
 	if flags.ListMarkets {
@@ -396,7 +398,7 @@ func main() {
 	}
 
 	if len(flags.Tickers) > 0 {
-		tickers = append(tickers, flags.Tickers...)
+		tickers = append(tickers, strings.Split(flags.Tickers[0], ",")...)
 	}
 
 	if !strings.HasSuffix(flags.Outfile, ".csv") {

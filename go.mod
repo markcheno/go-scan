@@ -1,8 +1,6 @@
 module scan
 
-go 1.23.2
-
-toolchain go1.23.4
+go 1.24.0
 
 require (
 	github.com/markcheno/go-quote v0.0.0-20240929161446-cb6fe2a2e6f8

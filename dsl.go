@@ -133,6 +133,8 @@ var taFunctions = []funcDefinition{
 	{"lt", lt, "lt(series1,series2) // Vector less than"},
 	{"gte", gte, "gte(series1,series2) // Vector greater than or equal"},
 	{"lte", lte, "lte(series1,series2) // Vector less than or equal"},
+	{"cumsum", cumsum, "cumsum(series) // Cumulative sum"},
+	{"normalize", normalize, "normalize(series) // Normalize series"},
 	{"lag", lag, "lag(series,period) // Lag series by period"},
 	{"shift", shift, "shift(series,period) // Shift series by period"},
 }
@@ -191,6 +193,36 @@ func lte(a, b []float64) []float64 {
 	return result
 }
 
+// cumsum computes the cumulative sum of a float64 array
+func cumsum(a []float64) []float64 {
+	result := make([]float64, len(a))
+	sum := 0.0
+	for i := range a {
+		sum += a[i]
+		result[i] = sum
+	}
+	return result
+}
+
+// normalize normalizes a float64 array
+func normalize(a []float64) []float64 {
+	result := make([]float64, len(a))
+	min := a[0]
+	max := a[0]
+	for i := range a {
+		if a[i] < min {
+			min = a[i]
+		}
+		if a[i] > max {
+			max = a[i]
+		}
+	}
+	for i := range a {
+		result[i] = (a[i] - min) / (max - min)
+	}
+	return result
+}
+
 // lag lags a float64 array by a given period
 func lag(a []float64, period int) []float64 {
 	result := make([]float64, len(a))
@@ -232,11 +264,6 @@ func define(symbol string, value interface{}) {
 // init initializes the environment and defines the functions
 func init() {
 	e = env.NewEnv()
-	define("gt", gt)
-	define("lt", lt)
-	define("gte", gte)
-	define("lte", lte)
-	define("lag", lag)
 	for _, f := range taFunctions {
 		define(f.Name, f.Fn)
 	}

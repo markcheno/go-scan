@@ -21,38 +21,41 @@ type StringList struct {
 }
 
 // Implement the yaml.Unmarshaler interface
-func (sl *StringList) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var single string
-	var list []string
-	orderedMap := NewOrderedMap()
-
-	// Try to unmarshal as a single string
-	if err := unmarshal(&single); err == nil {
-		if strings.Contains(single, "|") {
-			items := strings.Split(single, "|")
-			for _, item := range items {
-				orderedMap.Set(item, nil)
-			}
-		} else {
-			items := strings.Split(single, ",")
-			for _, item := range items {
-				orderedMap.Set(item, nil)
-			}
-		}
-		*sl = StringList{items: orderedMap.Keys()}
+func (sl *StringList) UnmarshalYAML(unmarshal func(any) error) error {
+	// Try to unmarshal as a list of strings first
+	var items []string
+	if err := unmarshal(&items); err == nil {
+		sl.items = items
 		return nil
 	}
 
-	// Try to unmarshal as a list of strings
-	if err := unmarshal(&list); err == nil {
-		for _, item := range list {
-			orderedMap.Set(item, nil)
+	// Try as a single string
+	var str string
+	if err := unmarshal(&str); err == nil {
+		switch {
+		case strings.Contains(str, "|"):
+			sl.items = strings.Split(str, "|")
+		case strings.Contains(str, ","):
+			sl.items = strings.Split(str, ",")
+		default:
+			if str != "" {
+				sl.items = []string{str}
+			} else {
+				sl.items = []string{}
+			}
 		}
-		*sl = StringList{items: orderedMap.Keys()}
 		return nil
 	}
 
-	return nil
+	return fmt.Errorf("failed to unmarshal as string or []string")
+}
+
+// Add MarshalYAML method to properly serialize the StringList
+func (sl StringList) MarshalYAML() (interface{}, error) {
+	if len(sl.items) == 0 {
+		return []string{}, nil
+	}
+	return sl.items, nil
 }
 
 // Implement the flag.Value interface
@@ -67,11 +70,10 @@ func (sl *StringList) Set(value string) error {
 
 // ScanFlags is a struct to hold the command line flags
 type ScanFlags struct {
-	ConfigFile   string     `yaml:"-"`
-	SaveConfig   bool       `yaml:"-"`
 	TiingoToken  string     `yaml:"-"`
 	ListMarkets  bool       `yaml:"-"`
 	ListTA       bool       `yaml:"-"`
+	ConfigFile   string     `yaml:"-"`
 	Logfile      string     `yaml:"logfile"`
 	Outfile      string     `yaml:"outfile"`
 	StartDate    string     `yaml:"start_date"`
@@ -90,17 +92,15 @@ type ScanFlags struct {
 
 // ScanFlags is a global variable to hold the command line flags
 var flags ScanFlags
-var params ScanFlags
 
 var (
 	Version = "dev"
 )
 
 // init initializes the command line flags
-func init() {
+func initFlags() {
 	today := time.Now().Format("2006-01-02")
-	flag.StringVar(&flags.ConfigFile, "config", "", "Yaml config file")
-	flag.BoolVar(&flags.SaveConfig, "save", false, "Save the config to a file")
+	flag.StringVar(&flags.ConfigFile, "config", "", "Configuration file path (load if exists, save if not)")
 	flag.StringVar(&flags.TiingoToken, "tiingo-token", os.Getenv("TIINGO_API_TOKEN"), "tiingo api token")
 	flag.BoolVar(&flags.ListMarkets, "list-markets", false, "List available markets")
 	flag.BoolVar(&flags.ListTA, "list-ta", false, "List available technical analysis functions")
@@ -120,27 +120,43 @@ func init() {
 	flag.Float64Var(&flags.SplitPct, "split-pct", 0, "Percentage of data to use for training")
 }
 
-// loadConfig loads the configuration from a YAML file
-func loadConfig(filename string, config *ScanFlags) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return
-	}
-	log.Println("Loading config from: ", filename)
-	if err := yaml.Unmarshal(data, config); err != nil {
-		log.Fatalf("failed to unmarshal data: %v", err)
+// handleConfig handles loading and saving of configuration
+func handleConfig(flags *ScanFlags) error {
+	if flags.ConfigFile == "" {
+		return nil
 	}
 
+	// Check if config file exists
+	if _, err := os.Stat(flags.ConfigFile); os.IsNotExist(err) {
+		// Save current configuration
+		log.Printf("Saving configuration to %s", flags.ConfigFile)
+		return saveConfig(flags.ConfigFile, flags)
+	}
+
+	// Load existing configuration
+	log.Printf("Loading configuration from %s", flags.ConfigFile)
+	return loadConfig(flags.ConfigFile, flags)
+}
+
+// loadConfig loads the configuration from a YAML file
+func loadConfig(filename string, config *ScanFlags) error {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %v", filename, err)
+	}
+	if err := yaml.Unmarshal(data, config); err != nil {
+		return fmt.Errorf("failed to unmarshal data: %v", err)
+	}
+	return nil
 }
 
 // saveConfig saves the configuration to a YAML file
 func saveConfig(path string, config *ScanFlags) error {
 	file, err := os.Create(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create file %s: %v", path, err)
 	}
 	defer file.Close()
-	log.Println("Saving config to: ", path)
 	encoder := yaml.NewEncoder(file)
 	return encoder.Encode(config)
 }
@@ -202,7 +218,7 @@ func writeToCSV(filename string, allRows [][]string) error {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	log.Println("Writing to: ", filename)
+	log.Printf("Writing to %s", filename)
 	for _, record := range allRows {
 		err := writer.Write(record)
 		if err != nil {
@@ -342,13 +358,14 @@ func main() {
 	var tickers []string
 
 	// Parse command line flags
+	initFlags()
 	flag.Parse()
 
 	// Set up logging
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	log.Printf("Logfile: %s", flags.Logfile)
 	if flags.Logfile != "" {
+		log.Printf("Logging to %s", flags.Logfile)
 		//logfile, err := os.OpenFile(flags.Logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		logfile, err := os.OpenFile(flags.Logfile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 
@@ -365,6 +382,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Handle configuration
+	if err := handleConfig(&flags); err != nil {
+		log.Fatalf("Config error: %v", err)
+	}
+
+	// Print version information
 	if version := flag.Bool("version", false, "Print version information"); *version {
 		fmt.Printf("go-scan version %s\n", Version)
 		os.Exit(0)
@@ -386,47 +409,54 @@ func main() {
 		return
 	}
 
-	if (flags.Source == "tiingo" || flags.Source == "tiingo-crypto") && flags.TiingoToken == "" {
-		log.Fatalf("Tiingo token is required")
-	}
-
-	if flags.Market != "" {
-		if !quote.ValidMarket(flags.Market) {
-			log.Fatalf("Invalid market: %s", flags.Market)
-		}
-		tickers, err = quote.NewMarketList(flags.Market)
-		if err != nil {
-			log.Fatalf("Failed to fetch market data: %v", err)
-		}
-	}
-
-	if len(flags.Tickers.items) > 0 && strings.Contains(flags.Tickers.items[0], ",") {
-		tickers = append(tickers, strings.Split(flags.Tickers.items[0], ",")...)
-	}
-
 	if !strings.HasSuffix(flags.Outfile, ".csv") {
 		log.Fatalf("Output file must have a .csv extension")
 	}
 
-	if flags.SaveConfig {
-		err = saveConfig(flags.ConfigFile, &flags)
+	if (flags.Source == "tiingo" || flags.Source == "tiingo-crypto") && flags.TiingoToken == "" {
+		log.Fatalf("Tiingo token is required")
+	}
+
+	// Handle market flag
+	if flags.Market != "" {
+		if !quote.ValidMarket(flags.Market) {
+			log.Fatalf("Invalid market: %s", flags.Market)
+		}
+		marketTickers, err := quote.NewMarketList(flags.Market)
 		if err != nil {
-			log.Fatalf("Failed to save config: %v", err)
+			log.Fatalf("Failed to fetch market data: %v", err)
+		}
+		tickers = append(tickers, marketTickers...)
+	}
+
+	// Handle tickers flag
+	if len(flags.Tickers.items) > 0 {
+		// Handle comma-separated tickers
+		for _, item := range flags.Tickers.items {
+			if strings.Contains(item, ",") {
+				tickerList := strings.Split(item, ",")
+				tickers = append(tickers, tickerList...)
+			} else {
+				tickers = append(tickers, item)
+			}
 		}
 	}
 
-	if flags.ConfigFile != "" {
-		loadConfig(flags.ConfigFile, &flags)
-		if len(flags.Tickers.items) > 0 {
-			tickers = flags.Tickers.items
+	// Remove duplicates from tickers slice
+	uniqueTickers := make(map[string]bool)
+	var finalTickers []string
+	for _, ticker := range tickers {
+		if !uniqueTickers[ticker] {
+			uniqueTickers[ticker] = true
+			finalTickers = append(finalTickers, ticker)
 		}
 	}
+	tickers = finalTickers
 
 	if len(tickers) == 0 {
 		fmt.Println("No tickers specified")
 		flag.Usage()
 		os.Exit(1)
-
 	}
 
 	allRows := make([][]string, 0)
@@ -505,10 +535,10 @@ func main() {
 			log.Fatalf("Failed to evaluate filter: %v", err)
 		}
 		if addticker {
-			log.Printf("Saving: %s\n", ticker)
+			log.Printf("Saving %s\n", ticker)
 			allRows = append(allRows, tickerRows...)
 		} else {
-			log.Printf("Excluding: %s\n", ticker)
+			log.Printf("Excluding %s due to filter\n", ticker)
 		}
 	}
 

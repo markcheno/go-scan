@@ -16,26 +16,39 @@ import (
 )
 
 // StringList is a custom flag type for a list of strings
-type StringList []string
+type StringList struct {
+	items []string
+}
 
 // Implement the yaml.Unmarshaler interface
 func (sl *StringList) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var single string
 	var list []string
+	orderedMap := NewOrderedMap()
 
 	// Try to unmarshal as a single string
 	if err := unmarshal(&single); err == nil {
 		if strings.Contains(single, "|") {
-			*sl = strings.Split(single, "|")
+			items := strings.Split(single, "|")
+			for _, item := range items {
+				orderedMap.Set(item, nil)
+			}
 		} else {
-			*sl = strings.Split(single, ",")
+			items := strings.Split(single, ",")
+			for _, item := range items {
+				orderedMap.Set(item, nil)
+			}
 		}
+		*sl = StringList{items: orderedMap.Keys()}
 		return nil
 	}
 
 	// Try to unmarshal as a list of strings
 	if err := unmarshal(&list); err == nil {
-		*sl = list
+		for _, item := range list {
+			orderedMap.Set(item, nil)
+		}
+		*sl = StringList{items: orderedMap.Keys()}
 		return nil
 	}
 
@@ -44,11 +57,11 @@ func (sl *StringList) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Implement the flag.Value interface
 func (sl *StringList) String() string {
-	return strings.Join(*sl, "|")
+	return strings.Join(sl.items, "|")
 }
 
 func (sl *StringList) Set(value string) error {
-	*sl = strings.Split(value, "|")
+	sl.items = strings.Split(value, "|")
 	return nil
 }
 
@@ -77,6 +90,7 @@ type ScanFlags struct {
 
 // ScanFlags is a global variable to hold the command line flags
 var flags ScanFlags
+var params ScanFlags
 
 var (
 	Version = "dev"
@@ -134,13 +148,13 @@ func saveConfig(path string, config *ScanFlags) error {
 // parseUserColumns parses the user columns and returns an OrderedMap
 func parseUserColumns() (*OrderedMap, error) {
 	orderedMap := NewOrderedMap()
-	if len(flags.Columns) == 0 {
+	if len(flags.Columns.items) == 0 {
 		return orderedMap, nil
 	}
 
-	columnList := strings.Split(flags.Columns.String(), "|")
+	columnList := strings.SplitSeq(flags.Columns.String(), "|")
 
-	for _, column := range columnList {
+	for column := range columnList {
 		params := strings.Split(column, "=")
 		if len(params) != 2 {
 			return nil, fmt.Errorf("invalid column format")
@@ -356,17 +370,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	if flags.SaveConfig {
-		err = saveConfig(flags.ConfigFile, &flags)
-		if err != nil {
-			log.Fatalf("Failed to save config: %v", err)
-		}
-	}
-
-	if flags.ConfigFile != "" {
-		loadConfig(flags.ConfigFile, &flags)
-	}
-
 	if flags.ListMarkets {
 		fmt.Println("Available markets:")
 		for _, market := range quote.ValidMarkets {
@@ -397,12 +400,26 @@ func main() {
 		}
 	}
 
-	if len(flags.Tickers) > 0 {
-		tickers = append(tickers, strings.Split(flags.Tickers[0], ",")...)
+	if len(flags.Tickers.items) > 0 && strings.Contains(flags.Tickers.items[0], ",") {
+		tickers = append(tickers, strings.Split(flags.Tickers.items[0], ",")...)
 	}
 
 	if !strings.HasSuffix(flags.Outfile, ".csv") {
 		log.Fatalf("Output file must have a .csv extension")
+	}
+
+	if flags.SaveConfig {
+		err = saveConfig(flags.ConfigFile, &flags)
+		if err != nil {
+			log.Fatalf("Failed to save config: %v", err)
+		}
+	}
+
+	if flags.ConfigFile != "" {
+		loadConfig(flags.ConfigFile, &flags)
+		if len(flags.Tickers.items) > 0 {
+			tickers = flags.Tickers.items
+		}
 	}
 
 	if len(tickers) == 0 {

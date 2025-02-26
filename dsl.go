@@ -137,6 +137,7 @@ var taFunctions = []funcDefinition{
 	{"normalize", normalize, "normalize(series) // Normalize series"},
 	{"lag", lag, "lag(series,period) // Lag series by period"},
 	{"shift", shift, "shift(series,period) // Shift series by period"},
+	{"sharpe", rollingSharpeRatio, "sharpe(returns,window) // Rolling Sharpe ratio"},
 }
 
 // Suplementary functions
@@ -248,6 +249,32 @@ func shift(a []float64, period int) []float64 {
 			result[i] = a[newIndex]
 		} else {
 			result[i] = 0.0
+		}
+	}
+	return result
+}
+
+func rollingSharpeRatio(returns []float64, window int) []float64 {
+	result := make([]float64, len(returns))
+	n := len(returns)
+	for i := range n {
+		if i < window {
+			result[i] = 0.0
+		} else {
+			// Compute the mean
+			sum := 0.0
+			for j := i - window; j < i; j++ {
+				sum += returns[j]
+			}
+			mean := sum / float64(window)
+			// Compute the standard deviation
+			sum = 0.0
+			for j := i - window; j < i; j++ {
+				sum += (returns[j] - mean) * (returns[j] - mean)
+			}
+			stddev := sum / float64(window)
+			// Compute the Sharpe ratio
+			result[i] = mean / stddev
 		}
 	}
 	return result

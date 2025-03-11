@@ -129,10 +129,15 @@ var taFunctions = []funcDefinition{
 	{"mult", talib.Mult, "mult(series1,series2) // Vector arithmetic multiply"},
 	{"sub", talib.Sub, "sub(series1,series2) // Vector arithmetic subtraction"},
 	{"sum", talib.Sum, "sum(series,period) // Vector summation"},
+	{"and", and, "and(series1,series2) // Vector logical AND"},
+	{"or", or, "or(series1,series2) // Vector logical OR"},
 	{"gt", gt, "gt(series1,series2) // Vector greater than"},
 	{"lt", lt, "lt(series1,series2) // Vector less than"},
 	{"gte", gte, "gte(series1,series2) // Vector greater than or equal"},
 	{"lte", lte, "lte(series1,series2) // Vector less than or equal"},
+	{"mult", mult, "mult(series1,series2) // Vector multiplication"},
+	{"div", div, "div(series1,series2) // Vector division"},
+	{"series", series, "series(value,n) // Create a series of n values"},
 	{"cumsum", cumsum, "cumsum(series) // Cumulative sum"},
 	{"normalize", normalize, "normalize(series) // Normalize series"},
 	{"lag", lag, "lag(series,period) // Lag series by period"},
@@ -186,6 +191,63 @@ func lte(a, b []float64) []float64 {
 	result := make([]float64, len(a))
 	for i := range a {
 		if a[i] <= b[i] {
+			result[i] = 1.0
+		} else {
+			result[i] = 0.0
+		}
+	}
+	return result
+}
+
+// mult performs element-wise multiplication of two float64 arrays
+func mult(a, b []float64) []float64 {
+	result := make([]float64, len(a))
+	for i := range a {
+		result[i] = a[i] * b[i]
+	}
+	return result
+}
+
+// div performs element-wise division of two float64 arrays
+func div(a, b []float64) []float64 {
+	result := make([]float64, len(a))
+	for i := range a {
+		if b[i] != 0.0 {
+			result[i] = a[i] / b[i]
+		} else {
+			result[i] = 0.0
+		}
+	}
+	return result
+}
+
+// series creats a series of float64 values from a float64 value
+func series(value float64, n int) []float64 {
+	result := make([]float64, n)
+	for i := range result {
+		result[i] = value
+	}
+	return result
+}
+
+// and performs element-wise logical AND of two float64 arrays
+func and(a, b []float64) []float64 {
+	result := make([]float64, len(a))
+	for i := range a {
+		if a[i] == 1.0 && b[i] == 1.0 {
+			result[i] = 1.0
+		} else {
+			result[i] = 0.0
+		}
+	}
+	return result
+}
+
+// or performs element-wise logical OR of two float64 arrays
+func or(a, b []float64) []float64 {
+	result := make([]float64, len(a))
+	for i := range a {
+		if a[i] == 1.0 || b[i] == 1.0 {
 			result[i] = 1.0
 		} else {
 			result[i] = 0.0

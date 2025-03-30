@@ -143,6 +143,7 @@ var taFunctions = []funcDefinition{
 	{"lag", lag, "lag(series,period) // Lag series by period"},
 	{"shift", shift, "shift(series,period) // Shift series by period"},
 	{"sharpe", rollingSharpeRatio, "sharpe(returns,window) // Rolling Sharpe ratio"},
+	{"sign", sign, "sign(series) // Sign of series"},
 }
 
 // Suplementary functions
@@ -337,6 +338,21 @@ func rollingSharpeRatio(returns []float64, window int) []float64 {
 			stddev := sum / float64(window)
 			// Compute the Sharpe ratio
 			result[i] = mean / stddev
+		}
+	}
+	return result
+}
+
+// sign returns 1 for positive values, -1 for negative values and 0 for zero
+func sign(a []float64) []float64 {
+	result := make([]float64, len(a))
+	for i := range a {
+		if a[i] > 0 {
+			result[i] = 1.0
+		} else if a[i] < 0 {
+			result[i] = -1.0
+		} else {
+			result[i] = 0.0
 		}
 	}
 	return result

@@ -1,0 +1,192 @@
+; StockFetcher Scanning Language BNF Specification
+
+<filter> ::= <statement> | <statement> "and" <filter>
+
+<statement> ::= <show-statement> | <condition-statement> | <chart-statement> | <column-statement> | <variable-statement> | <sort-statement> | <watch-list-statement> | <date-offset-statement>
+
+<show-statement> ::= "show stocks where" <condition-statement>
+
+<condition-statement> ::= <measure> <comparison> <value-or-measure> | 
+                         <measure> <trend-action> <duration> |
+                         <measure> <crossover-action> <value-or-measure> <timeframe> |
+                         <price-component> "is" <position-action> <value-or-measure> |
+                         <measure> "reached a new" <timespan> "high" |
+                         <measure> "reached a new" <timespan> "low" |
+                         "pattern is" <pattern-type> |
+                         <count-statement> |
+                         "stock is optionable" |
+                         "stock is not optionable"
+
+<chart-statement> ::= "draw" <measure> |
+                     "draw" <measure> "line at" <number> |
+                     "draw" <measure> "on plot" <measure> |
+                     "chart-type is" <chart-type> |
+                     "chart-size is" <chart-size> |
+                     "chart-time is" <timespan> |
+                     "chart-scale is" <chart-scale> |
+                     "chart-display is" <chart-display> |
+                     "primary-plot-size is" <number>
+
+<column-statement> ::= "add column" <measure> |
+                      "add column" <measure> "{" <column-alias> "}"
+
+<variable-statement> ::= "set{" <variable-name> "," <measure-or-expression> "}"
+
+<sort-statement> ::= "sort column" <number> <sort-direction>
+
+<watch-list-statement> ::= "apply to watch list"
+
+<date-offset-statement> ::= "date offset is" <number>
+
+<measure> ::= <price-component> |
+             <indicator> |
+             <measure> <timeshift> |
+             <measure> <math-operation> <measure> |
+             <function> "(" <measure> ["," <parameters>] ")" |
+             <variable-name>
+
+<price-component> ::= "open" | "high" | "low" | "close" | "price" | "volume"
+
+<indicator> ::= <moving-average> |
+               <oscillator> |
+               <band> |
+               <volatility-measure> |
+               <volume-measure> |
+               <momentum-measure> |
+               <trend-measure>
+
+<moving-average> ::= "MA" "(" <number> ")" |
+                    "EMA" "(" <number> ")" |
+                    "VMA" "(" <number> ")" |
+                    "DMA" "(" <number> "," ["+"|"-"] <number> ")" |
+                    "T3" "(" <number> "," <number> ")"
+
+<oscillator> ::= "RSI" "(" <number> ")" |
+                "MACD Fast Line" "(" <number> "," <number> "," <number> ")" |
+                "MACD Slow Line" "(" <number> "," <number> "," <number> ")" |
+                "MACD Histogram" "(" <number> "," <number> "," <number> ")" |
+                "Fast Stochastic" "(" <number> "," <number> ")" "Fast %K" |
+                "Fast Stochastic" "(" <number> "," <number> ")" "Slow %D" |
+                "Slow Stochastic" "(" <number> "," <number> ")" "Fast %K" |
+                "Slow Stochastic" "(" <number> "," <number> ")" "Slow %D" |
+                "Stochastic" "(" <number> "," <number> "," <number> ")" "%K" |
+                "Stochastic" "(" <number> "," <number> "," <number> ")" "%D" |
+                "StochRSI" "(" <number> "," <number> ")" |
+                "CCI" "(" <number> ")" |
+                "Williams %R" "(" <number> ")" |
+                "Ultimate Oscillator" "(" <number> "," <number> "," <number> ")" |
+                "PPO" "(" <number> "," <number> ")" |
+                "DPO" "(" <number> ")" |
+                "Momentum" "(" <number> ")"
+
+<band> ::= ["Upper"|"Lower"|"Median"] "Bollinger" ["Band"|"Line"] "(" <number> ["," <number>] ")" |
+          "Bollinger Width" "(" <number> ["," <number>] ")" |
+          "Bollinger Oscillator" "(" <number> ["," <number>] ")" |
+          "Bollinger %B" "(" <number> ["," <number>] ")" |
+          ["Upper"|"Lower"|"Center"] "Keltner Band" "(" <number> ")" |
+          ["Upper"|"Lower"|"Middle"] "Donchian Band" "(" <number> ["," <number>] ")" |
+          ["Upper"|"Lower"] "Projection Band" "(" <number> ")" |
+          ["Upper"|"Lower"|"Middle"] "Acceleration Band" "(" <number> ")" |
+          ["Upper"|"Lower"] ["EMA"|"SMA"] "Envelope" "(" <number> "," <number> ["," <number> "," <number>] ")"
+
+<volatility-measure> ::= ["Average"|"ATR"] "True Range" "(" <number> ")" |
+                        "Historical Volatility" "(" <number> ["," <number>] ")" |
+                        "Chaikin's Volatility" "(" <number> "," <number> ")"
+
+<volume-measure> ::= "Average Volume" "(" <number> ")" |
+                    "OBV" |
+                    ["Chaikin's"|"CMF"] "Money Flow" "(" <number> ")" |
+                    ["Money Flow Index"|"MFI"] "(" <number> ")" |
+                    "PVI" | "NVI" | "PVT" |
+                    "Average PVT" "(" <number> ")" |
+                    ["Volume Rate of Change"|"VROC"] "(" <number> ")"
+
+<momentum-measure> ::= ["Force Index"|"FI"] "(" <number> ")" |
+                      ["True Strength Index"|"TSI"] "(" <number> "," <number> ["," <number>] ")" |
+                      "TRIX" "(" <number> ["," <number>] ")" |
+                      "TRIX EMA" "(" <number> "," <number> ")" |
+                      "TRIX Histogram" "(" <number> "," <number> ")" |
+                      ["Smoothed Rate of Change"|"SmROC"] "(" <number> "," <number> ")" |
+                      ["Intraday Momentum Index"|"IMI"] "(" <number> ")" |
+                      "Intraday Intensity" "(" <number> ")" |
+                      "QStick" "(" <number> ["," <number>] ")" |
+                      "QStick EMA" "(" <number> "," <number> ")"
+
+<trend-measure> ::= "Aroon" ["Up"|"Down"|"Oscillator"] "(" <number> ")" |
+                   ["+"|"-"] "DI" "(" <number> ")" |
+                   "ADX" "(" <number> ")" |
+                   "DI" "(" <number> ")" "Difference" |
+                   "Parabolic SAR" ["(" <number> "," <number> ")"] |
+                   ["Linear Regression Indicator"|"LRI"] "(" <number> ")" |
+                   ["Linear Regression Slope"|"LRS"] "(" <number> ")" |
+                   ["Center"|"Top"|"Bottom"] "Linear Regression Line" "(" <number> ["," <number>] ")" |
+                   "KST" ["Daily"|"Monthly"|"Intermediate"|"Long"|"Weekly"] ["SMA"|"EMA"]
+
+<function> ::= "ABS" | "LOG" | "MAX" | "MIN" | "SIGN" | "SUM" | "COUNT" | "CMA" | "CEMA" | "IND"
+
+<timeshift> ::= <number> ["day"|"days"|"week"|"weeks"|"month"|"months"] "ago"
+
+<math-operation> ::= "plus" | "minus" | "multiply" | "multiplied by" | "divide" | "divided by"
+
+<comparison> ::= "is above" | "is below" | "is between" | "is" | "equals" |
+               "is more than" <percent-or-points> "above" | 
+               "is less than" <percent-or-points> "below" | 
+               "is above" <measure> "for the last" <duration> | 
+               "is below" <measure> "for the last" <duration> | 
+               "has been above" <measure> "for the last" <duration> | 
+               "has been below" <measure> "for the last" <duration>
+
+<trend-action> ::= ["has"|"had"] "been" ["increasing"|"decreasing"] "for"
+
+<crossover-action> ::= "crossed above" | "crossed below"
+
+<position-action> ::= "touching" | "near" | "approaching from above" | "approaching from below"
+
+<timeframe> ::= ["within the last" <duration>]
+
+<duration> ::= <number> ["day"|"days"|"week"|"weeks"|"month"|"months"]
+
+<timespan> ::= <number> ["day"|"week"|"month"|"year"] | "52 week"
+
+<pattern-type> ::= "cup and handle" | "double-bottom" | "double-top" | 
+                  "incomplete double-bottom" | "incomplete double-top" | 
+                  <candlestick-pattern> | <triangle-pattern>
+
+<candlestick-pattern> ::= ["Bullish"|"Bearish"] ["Engulfing"|"Harami"|"Doji Star"|"Three Line Strike"|
+                         "Upside Gap Three Methods"|"Three Outside"|"Three Inside"|
+                         "Tri-Star"|"Abandoned Baby"|"Kicking"|"Three White Soldiers"|
+                         "Three Black Crows"|"Dark Cloud Cover"|"Hanging Man"|"Hammer"]
+
+<triangle-pattern> ::= ["ascending"|"descending"|"symmetric"|"diverging"] "triangle" ["(" <number> ["," <number>] ")"]
+
+<count-statement> ::= "count" "(" <condition-statement> "," <number> ")" <comparison> <number>
+
+<chart-type> ::= "line" | "OHLC" | "candlestick"
+
+<chart-size> ::= "small" | "medium" | "large" | "giant" | "huge" | <number>
+
+<chart-scale> ::= "linear" | "logarithmic"
+
+<chart-display> ::= "weekly"
+
+<sort-direction> ::= "ascending" | "descending"
+
+<value-or-measure> ::= <measure> | <number> | <number> "and" <number>
+
+<measure-or-expression> ::= <measure> | <measure> <math-operation> <measure-or-expression>
+
+<percent-or-points> ::= <number> ["%"|"percent"|"point"|"points"]
+
+<parameters> ::= <number> ["," <parameters>]
+
+<column-alias> ::= <identifier>
+
+<variable-name> ::= <identifier>
+
+<identifier> ::= <letter> {<letter> | <digit> | "_"}
+
+<number> ::= <digit> {<digit>} ["." <digit> {<digit>}]
+
+<letter> ::= "A" | "B" | ... | "Z" | "a" | "b" | ... | "z"
+
+<digit> ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"

@@ -1,3 +1,7 @@
+github.com/alecthomas/participle/v2 v2.1.2 h1:9PtgSo8VRK+V3aj7VeJdAPoWUQ+NguG8TyiXDXB/iQg=
+github.com/alecthomas/participle/v2 v2.1.2/go.mod h1:ZOAlyCycg0sXkdDGVRePQ6Q1G6bSFAbCir8Fj7WfWwo=
+github.com/alecthomas/repr v0.4.0 h1:GhI2A8MACjfegCPVq9f1FLvIBS+DrQ2KQBFZP1iFzXc=
+github.com/alecthomas/repr v0.4.0/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/markcheno/go-quote v0.0.0-20240929161446-cb6fe2a2e6f8 h1:xjHmqImiMRzNrbkazP9e+EyplWAk36Gfza1IeLag72g=
 github.com/markcheno/go-quote v0.0.0-20240929161446-cb6fe2a2e6f8/go.mod h1:XkWzl73UMsPUypTth1MHbTnSW6ydpD5qHdearJq3eaI=
 github.com/markcheno/go-talib v0.0.0-20250114000313-ec55a20c902f h1:iKq//xEUUaeRoXNcAshpK4W8eSm7HtgI0aNznWtX7lk=

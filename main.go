@@ -70,24 +70,30 @@ func (sl *StringList) Set(value string) error {
 
 // ScanFlags is a struct to hold the command line flags
 type ScanFlags struct {
-	TiingoToken  string     `yaml:"-"`
-	ListMarkets  bool       `yaml:"-"`
-	ListTA       bool       `yaml:"-"`
-	ConfigFile   string     `yaml:"-"`
-	Logfile      string     `yaml:"logfile"`
-	Outfile      string     `yaml:"outfile"`
-	StartDate    string     `yaml:"start_date"`
-	EndDate      string     `yaml:"end_date"`
-	Filter       string     `yaml:"filter"`
-	Source       string     `yaml:"source"`
-	Tickers      StringList `yaml:"tickers"`
-	Market       string     `yaml:"market"`
-	Columns      StringList `yaml:"columns"`
-	DropColumns  string     `yaml:"drop_columns"`
-	TargetColumn string     `yaml:"target_column"`
-	Truncate     int        `yaml:"truncate"`
-	Pivot        bool       `yaml:"pivot"`
-	SplitPct     float64    `yaml:"split_pct"`
+	TiingoToken             string     `yaml:"-"`
+	ListMarkets             bool       `yaml:"-"`
+	ListTA                  bool       `yaml:"-"`
+	ConfigFile              string     `yaml:"-"`
+	Logfile                 string     `yaml:"logfile"`
+	Outfile                 string     `yaml:"outfile"`
+	StartDate               string     `yaml:"start_date"`
+	EndDate                 string     `yaml:"end_date"`
+	Filter                  string     `yaml:"filter"`
+	Source                  string     `yaml:"source"`
+	Tickers                 StringList `yaml:"tickers"`
+	Market                  string     `yaml:"market"`
+	Columns                 StringList `yaml:"columns"`
+	DropColumns             string     `yaml:"drop_columns"`
+	TargetColumn            string     `yaml:"target_column"`
+	Truncate                int        `yaml:"truncate"`
+	Pivot                   bool       `yaml:"pivot"`
+	SplitPct                float64    `yaml:"split_pct"`
+	OutputFormats           StringList `yaml:"output_formats"`
+	ParquetCompression      string     `yaml:"parquet_compression"`
+	ParquetPartitionBy      StringList `yaml:"parquet_partition_by"`
+	ParquetPartitionDateFmt string     `yaml:"parquet_partition_date_format"`
+	ParquetSortBy           StringList `yaml:"parquet_sort_by"`
+	ParquetRowGroupSize     int        `yaml:"parquet_row_group_size"`
 }
 
 // ScanFlags is a global variable to hold the command line flags
@@ -114,10 +120,16 @@ func initFlags() {
 	flag.IntVar(&flags.Truncate, "truncate", 0, "Number of rows to truncate from the beginning")
 	flag.BoolVar(&flags.Pivot, "pivot", false, "Pivot the data")
 	flag.StringVar(&flags.Filter, "filter", "", "filter expression to apply to last column of each ticker")
-	flag.StringVar(&flags.Source, "source", "yahoo", "Data source (yahoo|tiingo|tiingo-crypto|coinbase)")
+	flag.StringVar(&flags.Source, "source", "tiingo", "Data source (yahoo|tiingo|tiingo-crypto|coinbase)")
 	flag.Var(&flags.Tickers, "tickers", "Comma-separated list of tickers")
 	flag.StringVar(&flags.Market, "market", "", "Market to fetch data from (use --list-markets to see available markets)")
 	flag.Float64Var(&flags.SplitPct, "split-pct", 0, "Percentage of data to use for training")
+	flag.Var(&flags.OutputFormats, "output-formats", "Output formats (csv|parquet) - pipe separated")
+	flag.StringVar(&flags.ParquetCompression, "parquet-compression", "snappy", "Parquet compression codec (snappy|gzip|zstd|none)")
+	flag.Var(&flags.ParquetPartitionBy, "parquet-partition-by", "Columns to partition by (pipe separated, e.g. symbol|year)")
+	flag.StringVar(&flags.ParquetPartitionDateFmt, "parquet-partition-date-format", "", "Date partition format (year|year,month|year,month,day)")
+	flag.Var(&flags.ParquetSortBy, "parquet-sort-by", "Columns to sort by (pipe separated)")
+	flag.IntVar(&flags.ParquetRowGroupSize, "parquet-row-group-size", 100000, "Number of rows per row group in Parquet files")
 }
 
 // handleConfig handles loading and saving of configuration
@@ -409,8 +421,33 @@ func main() {
 		return
 	}
 
-	if !strings.HasSuffix(flags.Outfile, ".csv") {
-		log.Fatalf("Output file must have a .csv extension")
+	// Validate output file extension if formats are specified
+	if len(flags.OutputFormats.items) > 0 {
+		hasCSV := false
+		hasParquet := false
+		for _, format := range flags.OutputFormats.items {
+			format = strings.ToLower(strings.TrimSpace(format))
+			switch format {
+			case "csv":
+				hasCSV = true
+			case "parquet":
+				hasParquet = true
+			}
+		}
+
+		// If only CSV, require .csv extension
+		if hasCSV && !hasParquet && !strings.HasSuffix(flags.Outfile, ".csv") {
+			log.Fatalf("Output file must have a .csv extension when only CSV format is requested")
+		}
+		// If only Parquet, require .parquet extension
+		if hasParquet && !hasCSV && !strings.HasSuffix(flags.Outfile, ".parquet") {
+			log.Fatalf("Output file must have a .parquet extension when only Parquet format is requested")
+		}
+	} else {
+		// Default to CSV for backward compatibility
+		if !strings.HasSuffix(flags.Outfile, ".csv") {
+			log.Fatalf("Output file must have a .csv extension")
+		}
 	}
 
 	if (flags.Source == "tiingo" || flags.Source == "tiingo-crypto") && flags.TiingoToken == "" {
@@ -483,15 +520,16 @@ func main() {
 	for _, ticker := range tickers {
 		var q quote.Quote
 		var err error
-		if flags.Source == "yahoo" {
+		switch flags.Source {
+		case "yahoo":
 			q, err = quote.NewQuoteFromYahoo(ticker, flags.StartDate, flags.EndDate, "d", true)
-		} else if flags.Source == "tiingo" {
+		case "tiingo":
 			q, err = quote.NewQuoteFromTiingo(ticker, flags.StartDate, flags.EndDate, flags.TiingoToken)
-		} else if flags.Source == "tiingo-crypto" {
+		case "tiingo-crypto":
 			q, err = quote.NewQuoteFromTiingoCrypto(ticker, flags.StartDate, flags.EndDate, "d", flags.TiingoToken)
-		} else if flags.Source == "coinbase" {
+		case "coinbase":
 			q, err = quote.NewQuoteFromCoinbase(ticker, flags.StartDate, flags.EndDate, "d")
-		} else {
+		default:
 			log.Fatalf("Invalid source: %s", flags.Source)
 		}
 		if err != nil {
@@ -579,23 +617,69 @@ func main() {
 		}
 	}
 
-	err = writeToCSV(flags.Outfile, allRows)
-	if err != nil {
-		log.Fatalf("Failed to write CSV: %v", err)
+	// Determine which formats to write
+	shouldWriteCSV := len(flags.OutputFormats.items) == 0 // Default to CSV
+	shouldWriteParquet := false
+
+	for _, format := range flags.OutputFormats.items {
+		format = strings.ToLower(strings.TrimSpace(format))
+		switch format {
+		case "csv":
+			shouldWriteCSV = true
+		case "parquet":
+			shouldWriteParquet = true
+		}
 	}
 
-	if flags.SplitPct > 0 {
-		trainfile := strings.Replace(flags.Outfile, ".csv", "_train.csv", -1)
-		testfile := strings.Replace(flags.Outfile, ".csv", "_test.csv", -1)
-
-		err = writeToCSV(trainfile, trainingRows)
+	// Write CSV files if requested
+	if shouldWriteCSV {
+		err = writeToCSV(flags.Outfile, allRows)
 		if err != nil {
-			log.Fatalf("Failed to write training CSV: %v", err)
+			log.Fatalf("Failed to write CSV: %v", err)
 		}
 
-		err = writeToCSV(testfile, testingRows)
+		if flags.SplitPct > 0 {
+			trainfile := strings.Replace(flags.Outfile, ".csv", "_train.csv", -1)
+			testfile := strings.Replace(flags.Outfile, ".csv", "_test.csv", -1)
+
+			err = writeToCSV(trainfile, trainingRows)
+			if err != nil {
+				log.Fatalf("Failed to write training CSV: %v", err)
+			}
+
+			err = writeToCSV(testfile, testingRows)
+			if err != nil {
+				log.Fatalf("Failed to write testing CSV: %v", err)
+			}
+		}
+	}
+
+	// Write Parquet files if requested
+	if shouldWriteParquet {
+		parquetFile := flags.Outfile
+		// If the outfile has .csv extension and we're writing Parquet, change it
+		if strings.HasSuffix(parquetFile, ".csv") {
+			parquetFile = strings.Replace(parquetFile, ".csv", ".parquet", 1)
+		}
+
+		err = writeToParquet(parquetFile, allRows, &flags)
 		if err != nil {
-			log.Fatalf("Failed to write testing CSV: %v", err)
+			log.Fatalf("Failed to write Parquet: %v", err)
+		}
+
+		if flags.SplitPct > 0 {
+			trainfile := strings.Replace(parquetFile, ".parquet", "_train.parquet", -1)
+			testfile := strings.Replace(parquetFile, ".parquet", "_test.parquet", -1)
+
+			err = writeToParquet(trainfile, trainingRows, &flags)
+			if err != nil {
+				log.Fatalf("Failed to write training Parquet: %v", err)
+			}
+
+			err = writeToParquet(testfile, testingRows, &flags)
+			if err != nil {
+				log.Fatalf("Failed to write testing Parquet: %v", err)
+			}
 		}
 	}
 }

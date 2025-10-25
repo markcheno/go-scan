@@ -22,7 +22,7 @@ func TestFlagDefaults(t *testing.T) {
 	}{
 		{"StartDate", flags.StartDate, "2024-01-01"},
 		{"EndDate", flags.EndDate, time.Now().Format("2006-01-02")},
-		{"Source", flags.Source, "yahoo"},
+		{"Source", flags.Source, "tiingo"},
 		{"Outfile", flags.Outfile, "output.csv"},
 		{"Market", flags.Market, ""},
 		{"Truncate", flags.Truncate, 0},

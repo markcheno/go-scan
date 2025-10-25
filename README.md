@@ -1,12 +1,13 @@
 # Go Scan
 
-Go Scan is a Go application designed to fetch OHLCV (Open, High, Low, Close, Volume) data for a series of stock tickers, calculate various user-specified technical indicators, filter for conditions and write the results to CSV files. The application supports multiple data sources and allows for flexible configuration through command-line flags and YAML configuration files.
+Go Scan is a Go application designed to fetch OHLCV (Open, High, Low, Close, Volume) data for a series of stock tickers, calculate various user-specified technical indicators, filter for conditions and write the results to CSV and/or Parquet files. The application supports multiple data sources and allows for flexible configuration through command-line flags and YAML configuration files.
 
 ## Features
 
 - Fetch OHLCV data from multiple data sources (e.g., Yahoo, Tiingo)
 - Calculate user-specified technical indicators
-- Write results to CSV files
+- Write results to CSV and/or Parquet files
+- Parquet features: Hive-style partitioning, physical sorting, configurable compression
 - Support for both command-line flags and YAML configuration files
 - List available markets and technical analysis functions
 
@@ -67,6 +68,50 @@ scan -config=config.yaml
 ```sh
 scan -tickers=AAPL,GOOG,MSFT -start=2024-01-01 -end=2024-12-31 -outfile=output.csv -columns="sma20=sma(c,20)|rsi2=rsi(c,2)"
 ```
+
+### Parquet Output
+
+Generate Parquet files with partitioning and compression:
+
+```yaml
+# parquet_example.yaml
+start_date: "2024-01-01"
+end_date: "2024-12-31"
+outfile: "output.parquet"
+source: "yahoo"
+tickers:
+  - AAPL
+  - GOOG
+  - MSFT
+columns:
+  - sma20=sma(c,20)
+  - rsi14=rsi(c,14)
+output_formats:
+  - parquet
+parquet_compression: "snappy"
+parquet_partition_by:
+  - symbol
+parquet_sort_by:
+  - date
+```
+
+Run with:
+```sh
+scan -config=parquet_example.yaml
+```
+
+This creates a directory structure:
+```
+output/
+  symbol=AAPL/
+    data.parquet
+  symbol=GOOG/
+    data.parquet
+  symbol=MSFT/
+    data.parquet
+```
+
+For more Parquet examples, see `parquet_example.yaml`.
 
 ## Development
 

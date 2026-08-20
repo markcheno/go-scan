@@ -45,7 +45,7 @@ the web UI cannot drift from what the CLI does.
 
 ### internal/engine
 
-**config.go** — `Config` (the whole option surface, 21 persisted YAML fields), `StringList`
+**config.go** — `Config` (the whole option surface, 22 persisted YAML fields), `StringList`
 (accepts a YAML sequence or a pipe/comma delimited scalar; always marshals back as a
 sequence), and `LoadConfig`/`SaveConfig`/`MarshalConfig`/`HandleConfig`. `MarshalConfig`
 uses the same encoder as `SaveConfig` so a rendered preview is byte-identical to the file.
@@ -87,6 +87,18 @@ code path. Per-ticker failures land in `Result.Errors` and the run continues.
 user cache dir keyed by source/ticker/date range/period. Ranges ending today expire after an hour;
 historical ranges never do. `Fetcher` and `MarketLister` are interfaces so tests run without
 network access.
+
+**lookback.go** — static analysis of the column expressions to work out how many bars of
+history they need before their first valid value. `LookbackBars` resolves the `lookback`
+config field: off, an explicit count, or `auto` to derive it by parsing each expression with
+anko's own parser and walking the AST. A function's cost is the sum of its period arguments
+plus the deepest cost among its series arguments, so nested windows add — `sma(rsi(c,2),200)`
+is 202, not 200. Which arguments count is driven by `argClasses`, keyed on the argument names
+already in the catalog; `TestArgClassesCoverCatalog` fails if a new function introduces an
+unclassified name. Summing periods over-estimates (`macd` reports 47 against a true 33), which
+is the safe direction since surplus bars are discarded. `fixedWarmup` carries the handful of
+functions with a warm-up but no period argument to derive it from (the Hilbert transforms,
+`mama`). `widenStart` turns a bar count into a calendar date, per period.
 
 **transform.go / csv.go / parquet.go** — pivot, column dropping, and the writers.
 
@@ -157,7 +169,22 @@ ticker's last row: `-filter="close > 100 && rsi2 < 30"`.
 
 - Values are formatted with `%f` (six decimals) everywhere in the table, including volume.
 - `truncate` drops the first N bars per ticker; it exists to cut the warm-up period where
-  indicators are still zero.
+  indicators are still zero. `lookback` attacks the same problem from the other end, fetching
+  extra bars *before* `start_date` so there is no warm-up left to cut. It **defaults to
+  `auto`**, so a config that sets `truncate` as the old workaround now gets both and drops N
+  real rows; `Validate` warns when the two are combined.
+- `lookback` widens the range requested from the provider, and the quote cache is keyed on that
+  range, so switching it on or off refetches rather than serving a differently-sized cached
+  range.
+- The bar-to-calendar-date conversion in `widenStart` uses 365.25/252, not 7/5. The difference
+  is market holidays, and 7/5 is short enough that a 200-bar lookback reaches back for only
+  198 sessions — leaving exactly one leading zero on an `sma200`. Crypto hides this, since it
+  trades every calendar day; it only shows on equities.
+  `Run` does this by handing `fetchAll` a copy of the config with an earlier `StartDate`;
+  `processTicker` keeps the original and trims back to it, so nothing in fetch.go knows.
+- Column expressions are always evaluated over every bar fetched, including the warm-up ones.
+  Only the row-emission loop is trimmed — that is what lets the warm-up bars do their work and
+  then disappear.
 - Pivoting turns ticker-date rows into date rows with ticker-prefixed columns
   (`close` becomes `AAPL_close`).
 - `sharpe` divides by the variance rather than the standard deviation and is not

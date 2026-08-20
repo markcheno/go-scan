@@ -74,6 +74,7 @@ function applyConfig(cfg) {
   set('market', cfg.market);
   set('tickers', (cfg.tickers ?? []).join(', '));
   set('filter', cfg.filter);
+  set('lookback', cfg.lookback);
   set('truncate', cfg.truncate ?? 0);
   set('split_pct', cfg.split_pct ?? 0);
   set('drop_columns', cfg.drop_columns);
@@ -137,6 +138,7 @@ function readConfig() {
       .map((c) => `${c.name.trim()}=${c.expr.trim()}`),
     drop_columns: get('drop_columns'),
     target_column: get('target_column'),
+    lookback: get('lookback'),
     truncate: Number(get('truncate')) || 0,
     pivot: get('pivot'),
     split_pct: Number(get('split_pct')) || 0,
@@ -428,9 +430,17 @@ async function runPreview() {
     result.universe > result.tickers.length
       ? `sampled ${sampled} of ${result.universe} symbols`
       : `${sampled}`;
+
+  // The preview keeps only the most recent bars, so a config starting years
+  // back still opens mid-history here. Say so plainly: read as "N rows", that
+  // looks like missing data rather than a display limit.
+  const shown = result.rows.length;
+  const rows =
+    result.total_rows > shown
+      ? `showing the last ${shown} of ${result.total_rows} rows`
+      : `${shown} rows`;
   $('preview-meta').textContent =
-    `${result.rows.length} rows · ${result.headers.length} columns · ` +
-    `${universe} · last ${meta.preview_limits.bars} bars · ${result.elapsed}`;
+    `${rows} · ${result.headers.length} columns · ${universe} · ${result.elapsed}`;
 }
 
 // ─────────────────────────────── scan ────────────────────────────────────

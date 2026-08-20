@@ -60,6 +60,7 @@ func main() {
 	flag.StringVar(&cfg.DropColumns, "drop-columns", cfg.DropColumns, "Comma-separated list of columns to drop")
 	flag.StringVar(&cfg.TargetColumn, "target-column", cfg.TargetColumn, "Target column (other target columns are dropped when pivoting)")
 	flag.IntVar(&cfg.Truncate, "truncate", cfg.Truncate, "Number of rows to truncate from the beginning of each ticker")
+	flag.StringVar(&cfg.Lookback, "lookback", cfg.Lookback, `Extra bars to fetch before -start so indicators are warm: "auto", "off", or a bar count`)
 	flag.BoolVar(&cfg.Pivot, "pivot", cfg.Pivot, "Pivot the data")
 	flag.StringVar(&cfg.Filter, "filter", cfg.Filter, "Filter expression applied to the last row of each ticker")
 	flag.StringVar(&cfg.Source, "source", cfg.Source, "Data source ("+strings.Join(engine.Sources(), "|")+")")
@@ -156,7 +157,13 @@ func main() {
 		return
 	}
 
-	if problems := engine.Validate(&cfg); engine.HasErrors(problems) {
+	problems := engine.Validate(&cfg)
+	for _, p := range problems {
+		if p.Severity == engine.SeverityWarning {
+			log.Printf("warning: %s", p.Error())
+		}
+	}
+	if engine.HasErrors(problems) {
 		for _, p := range problems {
 			if p.Severity == engine.SeverityError {
 				log.Printf("error: %s", p.Error())

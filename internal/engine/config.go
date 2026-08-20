@@ -124,6 +124,7 @@ type Config struct {
 	DropColumns             string     `yaml:"drop_columns" json:"drop_columns"`
 	TargetColumn            string     `yaml:"target_column" json:"target_column"`
 	Truncate                int        `yaml:"truncate" json:"truncate"`
+	Lookback                string     `yaml:"lookback" json:"lookback"`
 	Pivot                   bool       `yaml:"pivot" json:"pivot"`
 	SplitPct                float64    `yaml:"split_pct" json:"split_pct"`
 	OutputFormats           StringList `yaml:"output_formats" json:"output_formats"`
@@ -203,6 +204,7 @@ func DefaultConfig() Config {
 		EndDate:             time.Now().Format(DateLayout),
 		Source:              "tiingo",
 		Period:              quote.PeriodString(quote.Daily),
+		Lookback:            LookbackAuto,
 		ParquetCompression:  "snappy",
 		ParquetRowGroupSize: 100000,
 	}

@@ -98,6 +98,7 @@ scan -config=config.yaml
 | `-columns` | | Pipe separated `name=expression` pairs (see `-list-ta`) |
 | `-filter` | | Boolean expression applied to each ticker's last row |
 | `-drop-columns` | | Comma separated columns to drop |
+| `-lookback` | `auto` | Fetch extra bars before `-start` so indicators are warm: `auto`, `off`, or a bar count |
 | `-truncate` | `0` | Drop the first N bars of each ticker |
 | `-pivot` | off | One row per date, columns prefixed by ticker |
 | `-target-column` | | With `-pivot`, keep only this target column |
@@ -161,6 +162,41 @@ column names. Values are compared numerically:
 
 Run `scan -list-ta` for the full list — 110 functions plus the 9 moving-average type
 constants that `matype` arguments take — or open the function reference in the web UI.
+
+## Warm-up
+
+An indicator has no value until it has seen enough bars, and go-talib fills those leading bars
+with zeros rather than leaving them empty. Without help, asking for 2024 with an `sma200`
+column gives you 199 rows of `0.000000` — not prices, and not something that should reach a
+model.
+
+So `-lookback` defaults to `auto`: it works out how much history the column expressions need,
+fetches that much extra *before* the start date, and then emits only the rows from the start
+date on.
+
+```sh
+$ scan -tickers=AAPL -start=2024-01-01 -end=2024-12-31 -columns="sma200=sma(c,200)"
+lookback: fetching from 2023-03-04 (200 extra bars) so columns are warm at 2024-01-01
+```
+
+The requested range comes back whole, with the indicator already populated on its first row.
+
+The estimate comes from the window sizes in the expressions, and nested windows add up —
+`sma(rsi(c,2),200)` needs 202 bars, not 200, because the outer average cannot start until the
+inner one is valid. It deliberately over-estimates; surplus bars are discarded. Where it cannot
+work the size out — a non-literal period, an unrecognized function — it says so and fetches
+what it can:
+
+```text
+warning: lookback: cannot derive the warm-up of x=sma(c,someVar) (non-literal period in sma)
+```
+
+Pass a bar count instead of `auto` to set it yourself, or `off` for the old behavior of
+starting cold. Note that `truncate` still applies on top, dropping N further bars from the
+start of the output — with the lookback on you rarely want both.
+
+Because the lookback changes the date range requested from the provider, and the quote cache is
+keyed on that range, switching it on or off refetches rather than reusing a cached range.
 
 ## Parquet output
 

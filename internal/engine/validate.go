@@ -243,12 +243,30 @@ func validateTransform(cfg *Config, p *problems) {
 	if cfg.TargetColumn != "" && !cfg.Pivot {
 		p.warn("target_column", "target_column is only applied when pivot is enabled")
 	}
+	validateLookback(cfg, p)
 
 	headers := ProjectedHeaders(cfg)
 	for _, col := range splitCommaList(cfg.DropColumns) {
 		if !containsFold(headers, col) {
 			p.warn("drop_columns", "no column named %q will be produced", col)
 		}
+	}
+}
+
+// validateLookback checks the lookback field and, when it is set to auto,
+// reports expressions whose warm-up could not be derived. Those are warnings:
+// the run still works, it just fetches less history than those columns need.
+func validateLookback(cfg *Config, p *problems) {
+	bars, unresolved, err := LookbackBars(cfg)
+	if err != nil {
+		p.err("lookback", "%s", err)
+		return
+	}
+	for _, expr := range unresolved {
+		p.warn("lookback", "cannot derive the warm-up of %s; it may still be warming at start_date", expr)
+	}
+	if bars > 0 && cfg.Truncate > 0 {
+		p.warn("truncate", "truncate drops %d more bars on top of the %d-bar lookback", cfg.Truncate, bars)
 	}
 }
 

@@ -103,7 +103,10 @@ type previewResponse struct {
 	Errors   []engine.TickerError   `json:"errors"`
 	Tickers  []string               `json:"tickers"`
 	Universe int                    `json:"universe"`
-	Elapsed  string                 `json:"elapsed"`
+	// TotalRows is how many rows the sampled tickers hold before MaxBars, so
+	// the UI can say what it is not showing.
+	TotalRows int    `json:"total_rows"`
+	Elapsed   string `json:"elapsed"`
 }
 
 func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
@@ -134,13 +137,14 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, previewResponse{
-		Headers:  result.Headers,
-		Rows:     nonNilRows(result.Rows),
-		Verdicts: nonNilVerdicts(result.Verdicts),
-		Errors:   nonNilErrors(result.Errors),
-		Tickers:  result.Tickers,
-		Universe: result.Universe,
-		Elapsed:  result.Elapsed.Round(time.Millisecond).String(),
+		Headers:   result.Headers,
+		Rows:      nonNilRows(result.Rows),
+		Verdicts:  nonNilVerdicts(result.Verdicts),
+		Errors:    nonNilErrors(result.Errors),
+		Tickers:   result.Tickers,
+		Universe:  result.Universe,
+		TotalRows: result.TotalRows,
+		Elapsed:   result.Elapsed.Round(time.Millisecond).String(),
 	})
 }
 

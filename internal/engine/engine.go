@@ -58,8 +58,17 @@ type Result struct {
 	Tickers  []string        `json:"tickers"`
 	// Universe is the size of the resolved universe before MaxTickers was
 	// applied, so a sampled preview can still report how big the real run is.
-	Universe int           `json:"universe"`
-	Elapsed  time.Duration `json:"elapsed"`
+	Universe int `json:"universe"`
+	// TotalRows is how many rows the kept tickers would have produced before
+	// MaxBars capped them, so a sampled preview can say how much it is not
+	// showing. Equal to len(Rows) when MaxBars did not bite.
+	TotalRows int `json:"total_rows"`
+	// Lookback is how many extra bars were fetched before StartDate to warm the
+	// columns up, and FetchFrom is the start date that produced. Both are
+	// zero-valued when the lookback is off.
+	Lookback  int           `json:"lookback"`
+	FetchFrom string        `json:"fetch_from"`
+	Elapsed   time.Duration `json:"elapsed"`
 }
 
 // Options control how a run executes. The zero value is a full run with the
@@ -146,7 +155,34 @@ func Run(ctx context.Context, cfg *Config, opts Options) (*Result, error) {
 
 	result := &Result{Headers: headers, Tickers: tickers, Universe: universe}
 
-	quotes := fetchAll(ctx, cfg, tickers, opts, result)
+	// Fetching reads cfg.StartDate directly, and so does the cache key, so
+	// widening the window is just a copy of the config with an earlier start.
+	// processTicker keeps the original cfg and trims back to it.
+	fetchCfg := cfg
+	var trimBefore time.Time
+	lookback, _, err := LookbackBars(cfg)
+	if err != nil {
+		return nil, FieldError{Field: "lookback", Index: -1, Severity: SeverityError, Message: err.Error()}
+	}
+	if lookback > 0 {
+		from, err := widenStart(cfg.StartDate, lookback, cfg.Period)
+		if err != nil {
+			return nil, err
+		}
+		widened := *cfg
+		widened.StartDate = from
+		fetchCfg = &widened
+
+		trimBefore, err = time.Parse(DateLayout, cfg.StartDate)
+		if err != nil {
+			return nil, fmt.Errorf("start_date: %w", err)
+		}
+		result.Lookback, result.FetchFrom = lookback, from
+		opts.logf("lookback: fetching from %s (%d extra bars) so columns are warm at %s",
+			from, lookback, cfg.StartDate)
+	}
+
+	quotes := fetchAll(ctx, fetchCfg, tickers, opts, result)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -164,7 +200,16 @@ func Run(ctx context.Context, cfg *Config, opts Options) (*Result, error) {
 		}
 		opts.progress(Progress{Phase: PhaseCompute, Done: i + 1, Total: len(tickers), Ticker: tickers[i]})
 
-		rows, verdict, err := processTicker(ctx, cfg, *q, columnMap, headers, opts.MaxBars)
+		// A provider with less history than asked for is not an error, but it
+		// does mean the columns may not be warm by start_date after all.
+		if lookback > 0 {
+			if warm := barsBefore(q.Date, trimBefore); warm < lookback {
+				opts.logf("%s: only %d of %d lookback bars available; columns may still be warming at %s",
+					tickers[i], warm, lookback, cfg.StartDate)
+			}
+		}
+
+		rows, verdict, err := processTicker(ctx, cfg, *q, columnMap, headers, opts.MaxBars, trimBefore)
 		if err != nil {
 			result.Errors = append(result.Errors, TickerError{Ticker: tickers[i], Message: err.Error()})
 			opts.logf("skipping %s: %v", tickers[i], err)
@@ -177,6 +222,7 @@ func Run(ctx context.Context, cfg *Config, opts Options) (*Result, error) {
 		}
 		opts.logf("keeping %s (%d rows)", tickers[i], len(rows))
 		allRows = append(allRows, rows...)
+		result.TotalRows += len(q.Date) - outputStart(q.Date, trimBefore, cfg.Truncate)
 
 		// Split each ticker's own history, so every ticker contributes to both
 		// sets rather than whole tickers landing in one or the other.
@@ -304,14 +350,33 @@ func fetchAll(ctx context.Context, cfg *Config, tickers []string, opts Options, 
 	return quotes
 }
 
-// processTicker computes the user columns for one quote, formats its rows and
-// evaluates the filter against the last row.
-func processTicker(ctx context.Context, cfg *Config, q quote.Quote, columnMap *OrderedMap, headers []string, maxBars int) ([][]string, TickerVerdict, error) {
-	verdict := TickerVerdict{Ticker: q.Symbol, Bars: len(q.Date)}
-
-	if cfg.Truncate >= len(q.Date) {
-		return nil, verdict, fmt.Errorf("truncate of %d leaves no rows (only %d bars available)", cfg.Truncate, len(q.Date))
+// barsBefore counts the leading bars dated earlier than cutoff. A zero cutoff
+// means no lookback was applied, so nothing is trimmed.
+func barsBefore(dates []time.Time, cutoff time.Time) int {
+	if cutoff.IsZero() {
+		return 0
 	}
+	n := 0
+	for n < len(dates) && dates[n].Before(cutoff) {
+		n++
+	}
+	return n
+}
+
+// outputStart is the index of the first bar that reaches the output once the
+// warm-up bars and truncate are dropped, but before MaxBars caps the window.
+// Run uses it to report how many rows a preview is holding back, so it has to
+// stay the same calculation processTicker makes.
+func outputStart(dates []time.Time, trimBefore time.Time, truncate int) int {
+	return barsBefore(dates, trimBefore) + truncate
+}
+
+// processTicker computes the user columns for one quote, formats its rows and
+// evaluates the filter against the last row. Columns are always computed over
+// every bar fetched; trimBefore then drops the leading bars that were fetched
+// only to warm them up, and is the zero time when there are none.
+func processTicker(ctx context.Context, cfg *Config, q quote.Quote, columnMap *OrderedMap, headers []string, maxBars int, trimBefore time.Time) ([][]string, TickerVerdict, error) {
+	verdict := TickerVerdict{Ticker: q.Symbol}
 
 	ev := NewEvaluator()
 	if err := ev.BindQuote(q); err != nil {
@@ -331,10 +396,17 @@ func processTicker(ctx context.Context, cfg *Config, q quote.Quote, columnMap *O
 		columns.Set(name, values)
 	}
 
-	start := cfg.Truncate
+	// Drop the warm-up bars first, so truncate keeps meaning "drop N bars of
+	// output" rather than eating into the range the user asked for.
+	start := outputStart(q.Date, trimBefore, cfg.Truncate)
 	if maxBars > 0 && len(q.Date)-start > maxBars {
 		start = len(q.Date) - maxBars
 	}
+	if start >= len(q.Date) {
+		return nil, verdict, fmt.Errorf("no bars left after warm-up and a truncate of %d (only %d bars available)",
+			cfg.Truncate, len(q.Date))
+	}
+	verdict.Bars = len(q.Date) - start
 
 	layout := DateColumnLayout(cfg.Period)
 	rows := make([][]string, 0, len(q.Date)-start)

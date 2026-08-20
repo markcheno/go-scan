@@ -104,6 +104,11 @@
       <div class="fields">
         <div class="row">
           <label class="field">
+            <span>Lookback</span>
+            <input type="text" name="lookback" spellcheck="false" placeholder="off">
+            <small>Extra bars fetched before the start date so indicators are warm: <code>auto</code>, <code>off</code>, or a bar count.</small>
+          </label>
+          <label class="field">
             <span>Truncate</span>
             <input type="number" name="truncate" min="0" step="1">
             <small>Drop the first N bars of each ticker.</small>

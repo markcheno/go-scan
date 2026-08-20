@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"fmt"
@@ -282,23 +282,24 @@ func getCompressionCodec(compressionType string) compress.Compression {
 	}
 }
 
-// writeToParquet writes data to Parquet file(s) with optional partitioning
-func writeToParquet(filename string, allRows [][]string, config *ScanFlags) error {
+// writeToParquet writes data to Parquet file(s) with optional partitioning and
+// returns the paths written.
+func writeToParquet(filename string, allRows [][]string, config *Config) ([]string, error) {
 	if len(allRows) < 2 {
-		return fmt.Errorf("insufficient data to write")
+		return nil, fmt.Errorf("insufficient data to write")
 	}
 
 	headers := allRows[0]
 	dataRows := allRows[1:]
 
 	// Sort data if requested
-	if len(config.ParquetSortBy.items) > 0 {
-		log.Printf("Sorting by: %v", config.ParquetSortBy.items)
-		dataRows = sortDataByColumns(headers, dataRows, config.ParquetSortBy.items)
+	if config.ParquetSortBy.Len() > 0 {
+		log.Printf("Sorting by: %v", config.ParquetSortBy.Items())
+		dataRows = sortDataByColumns(headers, dataRows, config.ParquetSortBy.Items())
 	}
 
 	// Partition data
-	partitions := partitionDataByColumns(headers, dataRows, config.ParquetPartitionBy.items, config.ParquetPartitionDateFmt)
+	partitions := partitionDataByColumns(headers, dataRows, config.ParquetPartitionBy.Items(), config.ParquetPartitionDateFmt)
 
 	// Infer schema from sample data
 	sampleSize := min(len(dataRows), 1000)
@@ -306,32 +307,27 @@ func writeToParquet(filename string, allRows [][]string, config *ScanFlags) erro
 
 	// Get base directory from filename
 	baseDir := strings.TrimSuffix(filename, filepath.Ext(filename))
-	if len(partitions) == 1 {
-		// No partitioning or single partition - write single file
-		for key, rows := range partitions {
-			outputPath := filename
-			if key != "" {
-				outputPath = filepath.Join(baseDir, key, "data.parquet")
-			}
-			if err := writeSingleParquetFile(outputPath, headers, rows, schema, config); err != nil {
-				return fmt.Errorf("failed to write parquet file: %w", err)
-			}
+	written := make([]string, 0, len(partitions))
+	for key, rows := range partitions {
+		outputPath := filename
+		if key != "" {
+			outputPath = filepath.Join(baseDir, key, "data.parquet")
 		}
-	} else {
-		// Multiple partitions - write Hive-style partitioned data
-		for key, rows := range partitions {
-			partitionPath := filepath.Join(baseDir, key, "data.parquet")
-			if err := writeSingleParquetFile(partitionPath, headers, rows, schema, config); err != nil {
-				return fmt.Errorf("failed to write partition %s: %w", key, err)
+		if err := writeSingleParquetFile(outputPath, headers, rows, schema, config); err != nil {
+			if key == "" {
+				return written, fmt.Errorf("failed to write parquet file: %w", err)
 			}
+			return written, fmt.Errorf("failed to write partition %s: %w", key, err)
 		}
+		written = append(written, outputPath)
 	}
+	sort.Strings(written)
 
-	return nil
+	return written, nil
 }
 
 // writeSingleParquetFile writes a single Parquet file
-func writeSingleParquetFile(filename string, headers []string, rows [][]string, schema *arrow.Schema, config *ScanFlags) error {
+func writeSingleParquetFile(filename string, headers []string, rows [][]string, schema *arrow.Schema, config *Config) error {
 	// Create directory if needed
 	dir := filepath.Dir(filename)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
@@ -374,11 +370,4 @@ func writeSingleParquetFile(filename string, headers []string, rows [][]string, 
 
 	log.Printf("Writing to %s (%d rows)", filename, len(rows))
 	return nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

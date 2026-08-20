@@ -1,13 +1,11 @@
-module scan
+module github.com/markcheno/go-scan
 
-go 1.24.0
+go 1.26.0
 
 require (
-	github.com/alecthomas/participle/v2 v2.1.2
-	github.com/alecthomas/repr v0.4.0
 	github.com/apache/arrow/go/v18 v18.0.0-20241007013041-ab95a4d25142
-	github.com/markcheno/go-quote v0.0.0-20240929161446-cb6fe2a2e6f8
-	github.com/markcheno/go-talib v0.0.0-20250114000313-ec55a20c902f
+	github.com/markcheno/go-quote v0.0.0-20251022180205-ebbbbdb8e2b0
+	github.com/markcheno/go-talib v0.0.0-20260617004048-4ff5e103edd9
 	github.com/mattn/anko v0.1.9
 	gopkg.in/yaml.v2 v2.4.0
 )

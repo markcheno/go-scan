@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"os"
@@ -18,7 +18,7 @@ func TestParquetWriting(t *testing.T) {
 	}
 
 	// Create test config
-	config := &ScanFlags{
+	config := &Config{
 		ParquetCompression:  "snappy",
 		ParquetRowGroupSize: 100,
 	}
@@ -26,7 +26,7 @@ func TestParquetWriting(t *testing.T) {
 	// Test 1: Write single Parquet file without partitioning
 	t.Run("Single file without partitioning", func(t *testing.T) {
 		testFile := filepath.Join(t.TempDir(), "test.parquet")
-		err := writeToParquet(testFile, rows, config)
+		_, err := writeToParquet(testFile, rows, config)
 		if err != nil {
 			t.Fatalf("Failed to write Parquet: %v", err)
 		}
@@ -46,9 +46,9 @@ func TestParquetWriting(t *testing.T) {
 	// Test 2: Write with partitioning by symbol
 	t.Run("Partitioned by symbol", func(t *testing.T) {
 		testFile := filepath.Join(t.TempDir(), "test.parquet")
-		config.ParquetPartitionBy = StringList{items: []string{"symbol"}}
+		config.ParquetPartitionBy = NewStringList("symbol")
 
-		err := writeToParquet(testFile, rows, config)
+		_, err := writeToParquet(testFile, rows, config)
 		if err != nil {
 			t.Fatalf("Failed to write partitioned Parquet: %v", err)
 		}
@@ -72,10 +72,10 @@ func TestParquetWriting(t *testing.T) {
 	// Test 3: Write with sorting
 	t.Run("Sorted by date", func(t *testing.T) {
 		testFile := filepath.Join(t.TempDir(), "test_sorted.parquet")
-		config.ParquetPartitionBy = StringList{items: []string{}}
-		config.ParquetSortBy = StringList{items: []string{"date"}}
+		config.ParquetPartitionBy = NewStringList()
+		config.ParquetSortBy = NewStringList("date")
 
-		err := writeToParquet(testFile, rows, config)
+		_, err := writeToParquet(testFile, rows, config)
 		if err != nil {
 			t.Fatalf("Failed to write sorted Parquet: %v", err)
 		}

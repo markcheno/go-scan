@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>go-scan</title>
+<link rel="stylesheet" href="/assets/app.css">
+<script>window.SCAN_TOKEN = "__SCAN_TOKEN__";</script>
+<script type="module" src="/assets/app.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <h1>go&#8209;scan</h1>
+  <div class="path-group">
+    <input id="config-path" type="text" spellcheck="false" placeholder="config.yaml" aria-label="Config file path">
+    <button id="btn-load" class="ghost" type="button">Load</button>
+    <button id="btn-save" class="ghost" type="button">Save</button>
+  </div>
+  <div class="spacer"></div>
+  <span id="status" class="status" role="status"></span>
+  <button id="btn-run" class="primary" type="button">Run scan</button>
+</header>
+
+<main>
+  <!-- ─────────────────────────── configuration ─────────────────────────── -->
+  <form id="config-form" class="panel config" autocomplete="off">
+
+    <details open>
+      <summary>Source &amp; range</summary>
+      <div class="fields">
+        <label class="field">
+          <span>Source</span>
+          <select name="source" id="f-source"></select>
+        </label>
+        <label class="field" id="token-field">
+          <span>Tiingo token</span>
+          <input type="password" name="tiingo_token" placeholder="TIINGO_API_TOKEN">
+        </label>
+        <div class="row">
+          <label class="field">
+            <span>Start date</span>
+            <input type="date" name="start_date">
+          </label>
+          <label class="field">
+            <span>End date</span>
+            <input type="date" name="end_date">
+          </label>
+        </div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Universe</summary>
+      <div class="fields">
+        <label class="field">
+          <span>Market</span>
+          <select name="market" id="f-market"></select>
+        </label>
+        <label class="field">
+          <span>Tickers</span>
+          <textarea name="tickers" rows="3" spellcheck="false"
+                    placeholder="AAPL, MSFT, NVDA"></textarea>
+          <small>Comma, space or newline separated. Combined with the market above.</small>
+        </label>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Columns <span class="count" id="column-count"></span></summary>
+      <div class="fields">
+        <div id="columns" class="column-list"></div>
+        <div class="row">
+          <button type="button" class="ghost" id="btn-add-column">Add column</button>
+          <button type="button" class="ghost" id="btn-functions">Function reference</button>
+        </div>
+        <small>Variables: <code>d</code> date, <code>o</code> open, <code>h</code> high,
+          <code>l</code> low, <code>c</code> close, <code>v</code> volume. Later columns may
+          reference earlier ones by name.</small>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Filter</summary>
+      <div class="fields">
+        <label class="field">
+          <span>Expression</span>
+          <input type="text" name="filter" spellcheck="false"
+                 placeholder="close > 100 &amp;&amp; rsi2 < 30">
+          <small>Boolean expression evaluated against each ticker's last row.
+            Tickers that fail are excluded.</small>
+        </label>
+      </div>
+    </details>
+
+    <details>
+      <summary>Transform</summary>
+      <div class="fields">
+        <div class="row">
+          <label class="field">
+            <span>Truncate</span>
+            <input type="number" name="truncate" min="0" step="1">
+            <small>Drop the first N bars of each ticker.</small>
+          </label>
+          <label class="field">
+            <span>Train split</span>
+            <input type="number" name="split_pct" min="0" max="1" step="0.05">
+            <small>0 disables the train/test split.</small>
+          </label>
+        </div>
+        <label class="field">
+          <span>Drop columns</span>
+          <input type="text" name="drop_columns" spellcheck="false" placeholder="open,high,low,volume">
+        </label>
+        <label class="check">
+          <input type="checkbox" name="pivot">
+          <span>Pivot to one row per date, columns prefixed by ticker</span>
+        </label>
+        <label class="field" id="target-field">
+          <span>Target column</span>
+          <input type="text" name="target_column" spellcheck="false" placeholder="QQQ_target">
+          <small>When pivoting, every other column containing "target" is dropped.</small>
+        </label>
+      </div>
+    </details>
+
+    <details>
+      <summary>Output</summary>
+      <div class="fields">
+        <label class="field">
+          <span>Output file</span>
+          <input type="text" name="outfile" spellcheck="false" placeholder="output.csv">
+        </label>
+        <fieldset class="field">
+          <span>Formats</span>
+          <div class="row">
+            <label class="check"><input type="checkbox" name="format_csv"><span>CSV</span></label>
+            <label class="check"><input type="checkbox" name="format_parquet"><span>Parquet</span></label>
+          </div>
+        </fieldset>
+
+        <div id="parquet-options" class="subgroup">
+          <div class="row">
+            <label class="field">
+              <span>Compression</span>
+              <select name="parquet_compression" id="f-compression"></select>
+            </label>
+            <label class="field">
+              <span>Row group size</span>
+              <input type="number" name="parquet_row_group_size" min="0" step="1000">
+            </label>
+          </div>
+          <label class="field">
+            <span>Partition by</span>
+            <input type="text" name="parquet_partition_by" spellcheck="false" placeholder="symbol, date">
+          </label>
+          <label class="field">
+            <span>Partition date format</span>
+            <select name="parquet_partition_date_format" id="f-partition-date"></select>
+          </label>
+          <label class="field">
+            <span>Sort by</span>
+            <input type="text" name="parquet_sort_by" spellcheck="false" placeholder="date, symbol">
+          </label>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Log file</summary>
+      <div class="fields">
+        <label class="field">
+          <span>Path</span>
+          <input type="text" name="logfile" spellcheck="false" placeholder="(stdout)">
+        </label>
+      </div>
+    </details>
+  </form>
+
+  <!-- ───────────────────────────── results ─────────────────────────────── -->
+  <section class="panel results">
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab" data-tab="data" role="tab" aria-selected="true">Data</button>
+      <button type="button" class="tab" data-tab="scan" role="tab" aria-selected="false">Scan</button>
+      <button type="button" class="tab" data-tab="yaml" role="tab" aria-selected="false">YAML</button>
+      <button type="button" class="tab" data-tab="run" role="tab" aria-selected="false">Run</button>
+      <div class="spacer"></div>
+      <span id="problem-badge" class="badge" hidden></span>
+    </nav>
+
+    <div class="tab-panel" data-panel="data">
+      <div class="toolbar">
+        <button type="button" class="ghost" id="btn-preview">Refresh preview</button>
+        <label class="check"><input type="checkbox" id="auto-preview" checked><span>Auto</span></label>
+        <span class="spacer"></span>
+        <span id="preview-meta" class="meta"></span>
+      </div>
+      <div id="preview-errors" class="notices"></div>
+      <div id="preview-table" class="grid-host"></div>
+    </div>
+
+    <div class="tab-panel" data-panel="scan" hidden>
+      <div class="toolbar">
+        <button type="button" class="primary" id="btn-scan">Scan universe</button>
+        <label class="check"><input type="checkbox" id="scan-passed-only"><span>Passing only</span></label>
+        <span class="spacer"></span>
+        <button type="button" class="ghost" id="btn-copy-passed">Copy passing</button>
+        <button type="button" class="ghost" id="btn-use-passed">Use as tickers</button>
+      </div>
+      <div id="scan-meta" class="meta"></div>
+      <div id="scan-errors" class="notices"></div>
+      <div id="scan-table" class="grid-host"></div>
+    </div>
+
+    <div class="tab-panel" data-panel="yaml" hidden>
+      <div class="toolbar">
+        <span class="meta">Rendered by the same encoder that writes the file.</span>
+        <span class="spacer"></span>
+        <button type="button" class="ghost" id="btn-copy-yaml">Copy</button>
+      </div>
+      <pre id="yaml-view" class="yaml"></pre>
+    </div>
+
+    <div class="tab-panel" data-panel="run" hidden>
+      <div class="toolbar">
+        <button type="button" class="primary" id="btn-run-2">Run scan</button>
+        <button type="button" class="ghost" id="btn-cancel" disabled>Cancel</button>
+        <span class="spacer"></span>
+        <button type="button" class="ghost" id="btn-clear-cache">Clear quote cache</button>
+      </div>
+      <div class="progress"><div id="progress-bar"></div></div>
+      <div id="run-meta" class="meta"></div>
+      <div id="run-files" class="files"></div>
+      <pre id="run-log" class="log"></pre>
+    </div>
+  </section>
+</main>
+
+<!-- ─────────────────────────── function reference ───────────────────────── -->
+<dialog id="function-dialog">
+  <header>
+    <input type="search" id="function-search" placeholder="Search functions" aria-label="Search functions">
+    <button type="button" class="ghost" id="btn-close-functions">Close</button>
+  </header>
+  <div id="function-list"></div>
+</dialog>
+
+<div id="autocomplete" class="autocomplete" hidden></div>
+
+</body>
+</html>

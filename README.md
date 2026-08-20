@@ -1,140 +1,167 @@
 # Go Scan
 
-Go Scan is a Go application designed to fetch OHLCV (Open, High, Low, Close, Volume) data for a series of stock tickers, calculate various user-specified technical indicators, filter for conditions and write the results to CSV and/or Parquet files. The application supports multiple data sources and allows for flexible configuration through command-line flags and YAML configuration files.
+Go Scan fetches OHLCV (Open, High, Low, Close, Volume) data for a set of stock tickers,
+calculates user-specified technical indicators, filters for conditions, and writes the
+results to CSV and/or Parquet files. It runs either as a command-line tool or as a local
+web app for building configurations and previewing the data they produce.
 
 ## Features
 
-- Fetch OHLCV data from multiple data sources (e.g., Yahoo, Tiingo)
-- Calculate user-specified technical indicators
-- Write results to CSV and/or Parquet files
-- Parquet features: Hive-style partitioning, physical sorting, configurable compression
-- Support for both command-line flags and YAML configuration files
-- List available markets and technical analysis functions
+- Fetch OHLCV data from Tiingo, Tiingo Crypto and Coinbase
+- Calculate user-specified technical indicators with a small expression language
+- Screen a whole market with a filter expression
+- Write results to CSV and/or Parquet, with Hive-style partitioning, physical sorting and
+  configurable compression
+- Configure from command-line flags, a YAML file, or the web UI
+- On-disk quote cache so repeated runs and live previews do not refetch
 
 ## Installation
 
 ```sh
-go install github.com/markcheno/go-scan
+go install github.com/markcheno/go-scan@latest
 ```
 
-## Usage
-
-### Command-Line Flags
-
-You can configure the application using command-line flags. Here are some examples:
+## The web UI
 
 ```sh
-scan -tickers=AAPL,GOOG,MSFT -start=2024-01-01 -end=2024-12-31 -outfile=output.csv -columns="sma20=sma(c,20)|rsi2=rsi(c,2)"
+scan -serve -open
 ```
 
-### YAML Configuration
+This starts a local single-page app at `http://127.0.0.1:8080`:
 
-You can also configure the application using a YAML file. Here is an example `config.yaml`:
+- **Config form** covering every option, with live validation attached to the field at fault
+- **Data** tab previewing the actual output rows for a few sampled tickers
+- **Scan** tab running the filter across the whole universe and listing which tickers passed,
+  with the values that decided it
+- **YAML** tab showing exactly what will be written to disk, rendered by the same encoder
+  that writes it
+- **Run** tab executing the full scan with streaming progress and download links
+
+The server binds loopback only, refuses cross-origin requests and requires a per-process
+token, because it is unauthenticated and writes files anywhere you can.
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `-serve` | off | Start the web UI |
+| `-addr` | `127.0.0.1:8080` | Listen address; must be loopback |
+| `-open` | off | Open a browser once listening |
+| `-dev` | off | Serve web assets from disk instead of the embedded copy |
+
+## Command-line usage
+
+```sh
+scan -tickers=AAPL,GOOG,MSFT -start=2024-01-01 -end=2024-12-31 \
+     -outfile=output.csv -columns="sma20=sma(c,20)|rsi2=rsi(c,2)"
+```
+
+### YAML configuration
 
 ```yaml
 start_date: "2020-01-01"
 end_date: "2024-12-31"
 outfile: "mag7.csv"
-columns: "sma20=sma(c,20)|sma50=sma(c,50)|sma200=sma(c,200)|roc20=roc(c,20)|roc50=roc(c,50)|roc200=roc(c,200)"
-source: "yahoo"
-tickers: "AAPL,GOOG,MSFT,NVDA,AMZN,META,NFLX"
-split_pct: 0.8
-```
-
-Run the application with the YAML configuration file:
-
-```sh
-scan -config=config.yaml
-```
-
-### Available Flags
-
-- `-config`: YAML config file (default "signal.yaml")
-- `-save`: Save the config to a file
-- `-start`: Start date (default "2024-01-01")
-- `-end`: End date (default today)
-- `-outfile`: Output CSV file (default "output.csv")
-- `-columns`: Columns to calculate (e.g., "sma20=sma(c,20)|rsi2=rsi(c,2)")
-- `-source`: Data source (e.g., "yahoo", "tiingo", "tiingo-crypto", "coinbase")
-- `-token`: API token for data source
-- `-tickers`: Comma-separated list of tickers
-- `-market`: Market to fetch data from (use `--list-markets` to see available markets)
-- `-split-pct`: Percentage of data to use for training
-- `-list-markets`: List available markets
-- `-list-ta`: List available technical analysis functions
-
-### Example
-
-```sh
-scan -tickers=AAPL,GOOG,MSFT -start=2024-01-01 -end=2024-12-31 -outfile=output.csv -columns="sma20=sma(c,20)|rsi2=rsi(c,2)"
-```
-
-### Parquet Output
-
-Generate Parquet files with partitioning and compression:
-
-```yaml
-# parquet_example.yaml
-start_date: "2024-01-01"
-end_date: "2024-12-31"
-outfile: "output.parquet"
-source: "yahoo"
+source: "tiingo"
 tickers:
   - AAPL
   - GOOG
   - MSFT
 columns:
   - sma20=sma(c,20)
-  - rsi14=rsi(c,14)
-output_formats:
-  - parquet
-parquet_compression: "snappy"
-parquet_partition_by:
-  - symbol
-parquet_sort_by:
-  - date
+  - roc20=roc(c,20)
+filter: "close > sma20"
+split_pct: 0.8
 ```
 
-Run with:
+`-config` loads the file if it exists and writes the current flags to it if it does not:
+
 ```sh
-scan -config=parquet_example.yaml
+scan -config=config.yaml
 ```
 
-This creates a directory structure:
-```
-output/
-  symbol=AAPL/
-    data.parquet
-  symbol=GOOG/
-    data.parquet
-  symbol=MSFT/
-    data.parquet
+### Flags
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `-config` | | YAML config file: load if present, save if not |
+| `-start` | `2024-01-01` | Start date, `YYYY-MM-DD` |
+| `-end` | today | End date, `YYYY-MM-DD` |
+| `-source` | `tiingo` | `tiingo`, `tiingo-crypto` or `coinbase` |
+| `-tiingo-token` | `$TIINGO_API_TOKEN` | Tiingo API token |
+| `-tickers` | | Comma or pipe separated symbols |
+| `-market` | | Market to expand into symbols (see `-list-markets`) |
+| `-columns` | | Pipe separated `name=expression` pairs (see `-list-ta`) |
+| `-filter` | | Boolean expression applied to each ticker's last row |
+| `-drop-columns` | | Comma separated columns to drop |
+| `-truncate` | `0` | Drop the first N bars of each ticker |
+| `-pivot` | off | One row per date, columns prefixed by ticker |
+| `-target-column` | | With `-pivot`, keep only this target column |
+| `-split-pct` | `0` | Fraction of each ticker's history used for training |
+| `-outfile` | `output.csv` | Output path |
+| `-output-formats` | `csv` | `csv`, `parquet` or both, pipe separated |
+| `-log` | stdout | Log file |
+| `-concurrency` | `6` | Tickers fetched at once |
+| `-cache-dir` | user cache dir | Quote cache location |
+| `-no-cache` | off | Bypass the quote cache |
+| `-list-markets` | | List available markets |
+| `-list-ta` | | List available functions |
+| `-version` | | Print the version |
+
+Parquet-specific flags: `-parquet-compression`, `-parquet-partition-by`,
+`-parquet-partition-date-format`, `-parquet-sort-by`, `-parquet-row-group-size`.
+
+## Expressions
+
+Columns are written as `name=expression`. Available variables are `d` (date), `o`, `h`,
+`l`, `c` and `v`. Later columns may reference earlier ones by name:
+
+```text
+sma20=sma(c,20)|above=gt(c,sma20)|target=shift(roc(c,5),-1)
 ```
 
-For more Parquet examples, see `parquet_example.yaml`.
+Filters are boolean expressions evaluated against each ticker's last row, using the output
+column names. Values are compared numerically:
+
+```sh
+-filter="close > 100 && rsi2 < 30"
+```
+
+Run `scan -list-ta` for the full list of ~120 functions, or open the function reference in
+the web UI.
+
+## Parquet output
+
+```yaml
+output_formats: [parquet]
+parquet_compression: "snappy"   # snappy | gzip | zstd | none
+parquet_partition_by: [symbol]  # symbol=AAPL/ directories
+parquet_sort_by: [date, symbol] # physical sort for compression and pushdown
+parquet_row_group_size: 100000
+```
+
+Partitioning by `date` also accepts `parquet_partition_date_format` of `year`,
+`year,month` or `year,month,day`.
 
 ## Development
 
-1. Clone the repository:
+```sh
+go build ./...
+go test ./... -race
+scan -serve -dev     # serve web assets from internal/server/web
+```
 
-   ```sh
-   git clone https://github.com/yourusername/go-scan.git
-   cd go-scan
-   ```
+Layout:
 
-2. Install dependencies:
-
-   ```sh
-   go mod tidy
-   ```
+- `main.go` — command-line entry point
+- `internal/engine` — config, validation, the expression language, the scan pipeline and writers
+- `internal/server` — HTTP API and the embedded web UI under `internal/server/web`
 
 ### Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+Contributions are welcome. Please open an issue or submit a pull request.
 
 ### License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+MIT. See the LICENCE file.
 
 ### Acknowledgements
 

@@ -1,4 +1,4 @@
-package main
+package engine
 
 import (
 	"reflect"
@@ -176,6 +176,32 @@ func TestEvalFilter(t *testing.T) {
 			filter:      "close > 50",
 			header:      []string{"close"},
 			row:         []string{"100"},
+			expected:    true,
+			shouldError: false,
+		},
+		{
+			// Comparison must be numeric. As strings "9.000000" > "50" is
+			// true, which is how this used to behave.
+			name:        "numeric not lexicographic comparison",
+			filter:      "close > 50",
+			header:      []string{"close"},
+			row:         []string{"9.000000"},
+			expected:    false,
+			shouldError: false,
+		},
+		{
+			name:        "column name containing a reserved word",
+			filter:      "close_ma > 10 && AAPL_close < 200",
+			header:      []string{"close_ma", "AAPL_close"},
+			row:         []string{"12.5", "150.0"},
+			expected:    true,
+			shouldError: false,
+		},
+		{
+			name:        "compound expression",
+			filter:      "(close > 100) && (volume > 1000000)",
+			header:      []string{"close", "volume"},
+			row:         []string{"150.000000", "2000000.000000"},
 			expected:    true,
 			shouldError: false,
 		},

@@ -15,6 +15,13 @@ go test ./internal/engine -run TestName -v
 go mod tidy
 ```
 
+Tests never hit the network by default; the fetcher is an interface and the engine tests
+use a stub. The one exception is gated:
+
+```bash
+GO_SCAN_NETWORK_TESTS=1 go test ./internal/engine -run TestListMarketETF
+```
+
 The browser smoke test for the web UI is separate and needs Playwright; see
 `internal/server/uitest/README.md`.
 

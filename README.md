@@ -45,7 +45,7 @@ token, because it is unauthenticated and writes files anywhere you can.
 | `-serve` | off | Start the web UI |
 | `-addr` | `127.0.0.1:8080` | Listen address; must be loopback |
 | `-open` | off | Open a browser once listening |
-| `-dev` | off | Serve web assets from disk instead of the embedded copy |
+| `-dev` | off | Serve web assets from disk instead of the embedded copy; must run from the repo root |
 
 ## Command-line usage
 
@@ -125,8 +125,8 @@ column names. Values are compared numerically:
 -filter="close > 100 && rsi2 < 30"
 ```
 
-Run `scan -list-ta` for the full list of ~120 functions, or open the function reference in
-the web UI.
+Run `scan -list-ta` for the full list — 110 functions plus the 9 moving-average type
+constants that `matype` arguments take — or open the function reference in the web UI.
 
 ## Parquet output
 
@@ -146,8 +146,20 @@ Partitioning by `date` also accepts `parquet_partition_date_format` of `year`,
 ```sh
 go build ./...
 go test ./... -race
-scan -serve -dev     # serve web assets from internal/server/web
+
+# Edit the UI without rebuilding. -dev reads internal/server/web from the
+# working directory, so run it from the repo root.
+go run . -serve -dev
 ```
+
+A few tests need network access and are opt-in:
+
+```sh
+GO_SCAN_NETWORK_TESTS=1 go test ./internal/engine -run TestListMarketETF
+```
+
+The browser smoke test for the UI is separate and needs Playwright; see
+[internal/server/uitest/README.md](internal/server/uitest/README.md).
 
 Layout:
 

@@ -65,6 +65,9 @@ function applyConfig(cfg) {
   };
 
   set('source', cfg.source);
+  // The period list depends on the source, so populate it before setting it.
+  refreshPeriods(cfg.source);
+  set('period', cfg.period || 'd');
   set('tiingo_token', cfg.tiingo_token);
   set('start_date', cfg.start_date);
   set('end_date', cfg.end_date);
@@ -126,6 +129,7 @@ function readConfig() {
     end_date: get('end_date'),
     filter: get('filter'),
     source: get('source'),
+    period: get('period'),
     tickers: splitList(get('tickers')),
     market: get('market'),
     columns: columns
@@ -280,8 +284,23 @@ function wireEvents() {
 function syncConditionalFields() {
   const source = form.elements.source.value;
   $('token-field').hidden = !source.startsWith('tiingo');
+  refreshPeriods(source);
   $('parquet-options').hidden = !form.elements.format_parquet.checked;
   $('target-field').hidden = !form.elements.pivot.checked;
+}
+
+/**
+ * Refill the period picker for the selected source. The sets differ a lot —
+ * Binance serves 15 periods, Tiingo 3 — so the current choice is kept only when
+ * the new source still offers it.
+ */
+function refreshPeriods(source) {
+  const select = $('f-period');
+  const periods = meta.providers.find((p) => p.name === source)?.periods ?? [];
+  const wanted = select.value;
+
+  fillSelect(select, periods);
+  select.value = periods.includes(wanted) ? wanted : (periods.includes('d') ? 'd' : periods[0] ?? '');
 }
 
 let validateTimer = null;

@@ -26,21 +26,33 @@ type MarketLister interface {
 	Market(ctx context.Context, market string) ([]string, error)
 }
 
+// FetchRetries is how many times a transport error, 429 or 5xx is retried
+// before the ticker is recorded as failed.
+const FetchRetries = 2
+
 // QuoteFetcher fetches from the configured upstream data source, optionally
 // backed by an on-disk cache.
 type QuoteFetcher struct {
-	Cache *Cache
+	Cache  *Cache
+	client *quote.Client
 }
 
 // NewQuoteFetcher returns a fetcher using the given cache. A nil cache disables
 // caching.
 func NewQuoteFetcher(cache *Cache) *QuoteFetcher {
-	return &QuoteFetcher{Cache: cache}
+	return &QuoteFetcher{
+		Cache: cache,
+		// One client for every request, so connections are pooled.
+		client: &quote.Client{
+			UserAgent: "markcheno/go-scan",
+			Retry:     quote.RetryPolicy{Max: FetchRetries},
+		},
+	}
 }
 
 // Fetch retrieves one ticker, consulting the cache first.
 func (f *QuoteFetcher) Fetch(ctx context.Context, cfg *Config, ticker string) (quote.Quote, error) {
-	key := cacheKey("quote", cfg.Source, ticker, cfg.StartDate, cfg.EndDate)
+	key := cacheKey("quote", cfg.Source, ticker, cfg.StartDate, cfg.EndDate, cfg.Period)
 
 	if f.Cache != nil {
 		var q quote.Quote
@@ -55,7 +67,7 @@ func (f *QuoteFetcher) Fetch(ctx context.Context, cfg *Config, ticker string) (q
 		return quote.Quote{}, err
 	}
 
-	q, err := fetchUpstream(cfg, ticker)
+	q, err := f.fetchUpstream(ctx, cfg, ticker)
 	if err != nil {
 		return quote.Quote{}, err
 	}
@@ -71,18 +83,45 @@ func (f *QuoteFetcher) Fetch(ctx context.Context, cfg *Config, ticker string) (q
 	return q, nil
 }
 
-// fetchUpstream dispatches to go-quote. Only daily bars are supported.
-func fetchUpstream(cfg *Config, ticker string) (quote.Quote, error) {
-	switch cfg.Source {
-	case "tiingo":
-		return quote.NewQuoteFromTiingo(ticker, cfg.StartDate, cfg.EndDate, quote.Daily, cfg.TiingoToken)
-	case "tiingo-crypto":
-		return quote.NewQuoteFromTiingoCrypto(ticker, cfg.StartDate, cfg.EndDate, quote.Daily, cfg.TiingoToken)
-	case "coinbase":
-		return quote.NewQuoteFromCoinbase(ticker, cfg.StartDate, cfg.EndDate, quote.Daily)
-	default:
-		return quote.Quote{}, fmt.Errorf("invalid source: %s", cfg.Source)
+// fetchUpstream resolves the source through go-quote's provider registry, so a
+// provider added there needs no change here.
+func (f *QuoteFetcher) fetchUpstream(ctx context.Context, cfg *Config, ticker string) (quote.Quote, error) {
+	provider, err := f.client.Provider(cfg.Source)
+	if err != nil {
+		return quote.Quote{}, err
 	}
+	req, err := quoteRequest(cfg, ticker)
+	if err != nil {
+		return quote.Quote{}, err
+	}
+	if err := quote.CheckPeriod(provider, req.Period); err != nil {
+		return quote.Quote{}, err
+	}
+	return provider.Fetch(ctx, req)
+}
+
+// quoteRequest converts a Config into a go-quote request. Validate has already
+// checked the dates and period, so the parses here are belt and braces.
+func quoteRequest(cfg *Config, ticker string) (quote.Request, error) {
+	from, err := time.Parse(DateLayout, cfg.StartDate)
+	if err != nil {
+		return quote.Request{}, fmt.Errorf("start_date: %w", err)
+	}
+	to, err := time.Parse(DateLayout, cfg.EndDate)
+	if err != nil {
+		return quote.Request{}, fmt.Errorf("end_date: %w", err)
+	}
+	period, err := ParsePeriod(cfg.Period)
+	if err != nil {
+		return quote.Request{}, err
+	}
+	return quote.Request{
+		Symbol: ticker,
+		From:   from,
+		To:     to,
+		Period: period,
+		Token:  cfg.TiingoToken,
+	}, nil
 }
 
 // Market resolves a market name to its symbols, caching the result for a day.
@@ -102,7 +141,7 @@ func (f *QuoteFetcher) Market(ctx context.Context, market string) ([]string, err
 		return nil, err
 	}
 
-	symbols, err := listMarket(market)
+	symbols, err := f.client.MarketList(ctx, market)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch market %s: %w", market, err)
 	}
@@ -114,18 +153,6 @@ func (f *QuoteFetcher) Market(ctx context.Context, market string) ([]string, err
 		_ = f.Cache.Put(key, symbols)
 	}
 	return symbols, nil
-}
-
-// listMarket resolves a market name to its symbols.
-//
-// go-quote lists "etf" as a valid market but has no URL for it, so
-// NewMarketList fails on an empty request. The symbols come from a different
-// function, over anonymous FTP to nasdaqtrader.
-func listMarket(market string) ([]string, error) {
-	if market == "etf" {
-		return quote.NewEtfList()
-	}
-	return quote.NewMarketList(market)
 }
 
 // cacheTTL returns how long a fetch for the given end date stays fresh. A range

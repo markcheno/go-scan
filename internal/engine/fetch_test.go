@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-// TestListMarketETF checks the workaround for go-quote listing "etf" as a valid
-// market while having no URL for it: NewMarketList fails on an empty request, so
-// go-scan routes that one market through NewEtfList instead.
+// TestListMarketETF covers the one market that does not come from an HTTP JSON
+// API: etf is served over anonymous FTP from the NASDAQ symbol directory.
+// go-quote used to list it as valid while having no URL for it, which made it
+// unresolvable; this guards the path that replaced that workaround.
 //
-// It reaches the network (anonymous FTP to nasdaqtrader), so it is skipped in
-// short mode.
+// It reaches the network, so it is skipped unless explicitly enabled.
 func TestListMarketETF(t *testing.T) {
 	if testing.Short() {
 		t.Skip("needs network access")
@@ -20,9 +20,9 @@ func TestListMarketETF(t *testing.T) {
 		t.Skip("set GO_SCAN_NETWORK_TESTS=1 to run")
 	}
 
-	symbols, err := listMarket("etf")
+	symbols, err := NewQuoteFetcher(nil).Market(t.Context(), "etf")
 	if err != nil {
-		t.Fatalf("listMarket(etf): %v", err)
+		t.Fatalf("Market(etf): %v", err)
 	}
 	if len(symbols) < 100 {
 		t.Errorf("got %d symbols, expected the full ETF directory", len(symbols))
@@ -64,6 +64,29 @@ func TestCacheRoundTrip(t *testing.T) {
 	}
 	if ok, _ := cache.Get(key, 0, &got); ok {
 		t.Error("entry survived Clear")
+	}
+}
+
+// The period is part of what a fetch returns, so it has to be part of the key.
+// Without it an hourly run would be served a cached daily result.
+func TestCacheKeyIncludesPeriod(t *testing.T) {
+	daily := cacheKey("quote", "binance", "BTCUSDT", "2024-01-01", "2024-06-30", "d")
+	hourly := cacheKey("quote", "binance", "BTCUSDT", "2024-01-01", "2024-06-30", "1h")
+	if daily == hourly {
+		t.Error("daily and hourly fetches share a cache key")
+	}
+
+	// The same guarantee for every other component.
+	base := []string{"quote", "binance", "BTCUSDT", "2024-01-01", "2024-06-30", "d"}
+	seen := map[string]int{cacheKey(base...): -1}
+	for i := range base {
+		changed := append([]string{}, base...)
+		changed[i] += "x"
+		key := cacheKey(changed...)
+		if prev, dup := seen[key]; dup {
+			t.Errorf("component %d collides with component %d", i, prev)
+		}
+		seen[key] = i
 	}
 }
 

@@ -10,8 +10,14 @@ import (
 	"github.com/markcheno/go-quote"
 )
 
-// DateLayout is the only date format go-scan accepts.
+// DateLayout is the format for start_date and end_date, and for the date
+// column of daily and coarser bars.
 const DateLayout = "2006-01-02"
+
+// TimestampLayout is the date column format for intraday bars, where a bare
+// date would give every bar in a day the same value. It sorts lexicographically
+// and parses as a prefix superset of DateLayout.
+const TimestampLayout = "2006-01-02 15:04:05"
 
 // Severity distinguishes problems that block a run from ones that merely
 // surprise the user.
@@ -113,21 +119,27 @@ func validateDates(cfg *Config, p *problems) {
 }
 
 func validateUniverse(cfg *Config, p *problems) {
-	if cfg.Source == "" {
+	sources := Sources()
+	switch {
+	case cfg.Source == "":
 		p.err("source", "source is required")
-	} else if !slices.Contains(Sources, cfg.Source) {
-		p.err("source", "invalid source %q, expected one of %s", cfg.Source, strings.Join(Sources, ", "))
+	case !slices.Contains(sources, cfg.Source):
+		p.err("source", "invalid source %q, expected one of %s", cfg.Source, strings.Join(sources, ", "))
+	default:
+		validatePeriod(cfg, p)
 	}
 
+	// go-quote's provider registry does not describe credentials, so which
+	// sources need a token is still knowledge go-scan holds itself.
 	if (cfg.Source == "tiingo" || cfg.Source == "tiingo-crypto") && cfg.TiingoToken == "" {
 		p.err("tiingo_token", "a Tiingo API token is required for source %q (set TIINGO_API_TOKEN or pass -tiingo-token)", cfg.Source)
 	}
 
 	if cfg.Market != "" {
 		switch {
-		case !slices.Contains(Markets(), cfg.Market):
+		case !ValidMarket(cfg.Market):
 			p.err("market", "invalid market %q", cfg.Market)
-		case strings.HasPrefix(cfg.Market, "tiingo") && cfg.TiingoToken == "":
+		case quote.MarketRequiresToken(cfg.Market) && cfg.TiingoToken == "":
 			p.err("market", "market %q requires a Tiingo API token", cfg.Market)
 		}
 	}
@@ -139,6 +151,23 @@ func validateUniverse(cfg *Config, p *problems) {
 		if strings.TrimSpace(t) == "" {
 			p.errAt("tickers", i, "empty ticker")
 		}
+	}
+}
+
+// validatePeriod checks the period spelling, then whether the chosen source
+// actually serves it. Only called once the source is known to be valid.
+func validatePeriod(cfg *Config, p *problems) {
+	period, err := ParsePeriod(cfg.Period)
+	if err != nil {
+		p.err("period", "%s", err)
+		return
+	}
+	provider, err := providerClient.Provider(cfg.Source)
+	if err != nil {
+		return // already reported as a source problem
+	}
+	if err := quote.CheckPeriod(provider, period); err != nil {
+		p.err("period", "%s", err)
 	}
 }
 
@@ -303,5 +332,5 @@ func containsFold(haystack []string, needle string) bool {
 
 // ValidMarket reports whether go-quote can resolve the named market.
 func ValidMarket(market string) bool {
-	return slices.Contains(quote.ValidMarkets[:], market)
+	return quote.ValidMarket(market)
 }

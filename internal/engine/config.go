@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -116,6 +117,7 @@ type Config struct {
 	EndDate                 string     `yaml:"end_date" json:"end_date"`
 	Filter                  string     `yaml:"filter" json:"filter"`
 	Source                  string     `yaml:"source" json:"source"`
+	Period                  string     `yaml:"period" json:"period"`
 	Tickers                 StringList `yaml:"tickers" json:"tickers"`
 	Market                  string     `yaml:"market" json:"market"`
 	Columns                 StringList `yaml:"columns" json:"columns"`
@@ -132,9 +134,58 @@ type Config struct {
 	ParquetRowGroupSize     int        `yaml:"parquet_row_group_size" json:"parquet_row_group_size"`
 }
 
-// Sources lists the supported data sources. Yahoo was dropped when its
-// endpoint stopped returning quote data.
-var Sources = []string{"tiingo", "tiingo-crypto", "coinbase"}
+// Sources lists the supported data sources, straight from go-quote's provider
+// registry. A provider added there needs no change here.
+func Sources() []string {
+	return quote.ProviderNames()
+}
+
+// Periods lists the periods the named source supports, in the canonical
+// spelling ParsePeriod accepts. An unknown source yields no periods.
+func Periods(source string) []string {
+	provider, err := providerClient.Provider(source)
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(provider.Periods()))
+	for _, p := range provider.Periods() {
+		out = append(out, quote.PeriodString(p))
+	}
+	return out
+}
+
+// ParsePeriod converts a user-supplied period to a go-quote Period. An empty
+// period means daily, which is what every earlier version of go-scan requested.
+func ParsePeriod(period string) (quote.Period, error) {
+	if strings.TrimSpace(period) == "" {
+		return quote.Daily, nil
+	}
+	return quote.ParsePeriod(period)
+}
+
+// intradayPeriods are the periods with more than one bar per day.
+var intradayPeriods = []quote.Period{
+	quote.Min1, quote.Min3, quote.Min5, quote.Min15, quote.Min30,
+	quote.Min60, quote.Hour2, quote.Hour4, quote.Hour6, quote.Hour8, quote.Hour12,
+}
+
+// DateColumnLayout returns the format for the date column. Intraday bars need a
+// timestamp: with a bare date every bar in a day would be identical, which
+// makes the output ambiguous and collides when pivoting on date.
+func DateColumnLayout(period string) string {
+	p, err := ParsePeriod(period)
+	if err != nil {
+		return DateLayout
+	}
+	if slices.Contains(intradayPeriods, p) {
+		return TimestampLayout
+	}
+	return DateLayout
+}
+
+// providerClient exists only to look providers up; it performs no requests, so
+// it needs no configuration.
+var providerClient = &quote.Client{}
 
 // Compressions lists the supported parquet compression codecs.
 var Compressions = []string{"snappy", "gzip", "zstd", "none"}
@@ -151,6 +202,7 @@ func DefaultConfig() Config {
 		StartDate:           "2024-01-01",
 		EndDate:             time.Now().Format(DateLayout),
 		Source:              "tiingo",
+		Period:              quote.PeriodString(quote.Daily),
 		ParquetCompression:  "snappy",
 		ParquetRowGroupSize: 100000,
 	}
@@ -158,7 +210,7 @@ func DefaultConfig() Config {
 
 // Markets returns the markets go-quote knows how to resolve.
 func Markets() []string {
-	return quote.ValidMarkets[:]
+	return quote.Markets()
 }
 
 // LoadConfig reads a YAML config file into cfg.

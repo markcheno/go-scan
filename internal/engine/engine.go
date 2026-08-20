@@ -336,11 +336,12 @@ func processTicker(ctx context.Context, cfg *Config, q quote.Quote, columnMap *O
 		start = len(q.Date) - maxBars
 	}
 
+	layout := DateColumnLayout(cfg.Period)
 	rows := make([][]string, 0, len(q.Date)-start)
 	for i := start; i < len(q.Date); i++ {
 		record := []string{
 			q.Symbol,
-			q.Date[i].Format(DateLayout),
+			q.Date[i].Format(layout),
 			fmt.Sprintf("%f", q.Open[i]),
 			fmt.Sprintf("%f", q.High[i]),
 			fmt.Sprintf("%f", q.Low[i]),

@@ -21,8 +21,16 @@ const (
 	previewBars    = 500
 )
 
+// providerInfo tells the UI which periods a source serves, so the period
+// picker can repopulate when the source changes.
+type providerInfo struct {
+	Name    string   `json:"name"`
+	Periods []string `json:"periods"`
+}
+
 type metaResponse struct {
 	Sources              []string         `json:"sources"`
+	Providers            []providerInfo   `json:"providers"`
 	Markets              []string         `json:"markets"`
 	Compressions         []string         `json:"compressions"`
 	PartitionDateFormats []string         `json:"partition_date_formats"`
@@ -43,8 +51,15 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	if s.Cache != nil {
 		cacheDir = s.Cache.Dir()
 	}
+	sources := engine.Sources()
+	providers := make([]providerInfo, 0, len(sources))
+	for _, name := range sources {
+		providers = append(providers, providerInfo{Name: name, Periods: engine.Periods(name)})
+	}
+
 	writeJSON(w, http.StatusOK, metaResponse{
-		Sources:              engine.Sources,
+		Sources:              sources,
+		Providers:            providers,
 		Markets:              engine.Markets(),
 		Compressions:         engine.Compressions,
 		PartitionDateFormats: engine.PartitionDateFormats,

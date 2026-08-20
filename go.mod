@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/apache/arrow/go/v18 v18.0.0-20241007013041-ab95a4d25142
-	github.com/markcheno/go-quote v0.0.0-20251022180205-ebbbbdb8e2b0
+	github.com/markcheno/go-quote v0.2.1-0.20260820023603-b515cb5e8577
 	github.com/markcheno/go-talib v0.0.0-20260617004048-4ff5e103edd9
 	github.com/mattn/anko v0.1.9
 	gopkg.in/yaml.v2 v2.4.0

@@ -24,8 +24,8 @@ github.com/klauspost/compress v1.17.9 h1:6KIumPrER1LHsvBVuDa0r5xaG0Es51mhhB9BQB2
 github.com/klauspost/compress v1.17.9/go.mod h1:Di0epgTjJY877eYKx5yC51cX2A2Vl2ibi7bDH9ttBbw=
 github.com/klauspost/cpuid/v2 v2.2.8 h1:+StwCXwm9PdpiEkPyzBXIy+M9KUb4ODm0Zarf1kS5BM=
 github.com/klauspost/cpuid/v2 v2.2.8/go.mod h1:Lcz8mBdAVJIBVzewtcLocK12l3Y+JytZYpaMropDUws=
-github.com/markcheno/go-quote v0.0.0-20251022180205-ebbbbdb8e2b0 h1:PJSgOkus945aQTLDIwFay1giP+xKXSvM/x4n54+HWQE=
-github.com/markcheno/go-quote v0.0.0-20251022180205-ebbbbdb8e2b0/go.mod h1:XkWzl73UMsPUypTth1MHbTnSW6ydpD5qHdearJq3eaI=
+github.com/markcheno/go-quote v0.2.1-0.20260820023603-b515cb5e8577 h1:QwKe9RE7CI5b2f/f9iSLjcxg4pHsvWT3vBEzhHJUHcw=
+github.com/markcheno/go-quote v0.2.1-0.20260820023603-b515cb5e8577/go.mod h1:dM+ktwh4IJftGCMzFdJkOFc7JUE8kwnEMe+PD9oF490=
 github.com/markcheno/go-talib v0.0.0-20260617004048-4ff5e103edd9 h1:TAdcW2EF2OaAl6/MXh1xi1NFyvUv/kdvXS1utdcE7Sc=
 github.com/markcheno/go-talib v0.0.0-20260617004048-4ff5e103edd9/go.mod h1:3YUtoVrKWu2ql+iAeRyepSz3fy6a+19hJzGS88+u4u0=
 github.com/mattn/anko v0.1.9 h1:OpdRDvjOY/FQXoGXkN0n7b0br4a4fHB5hhsaq0Cd3ds=

@@ -7,7 +7,8 @@ web app for building configurations and previewing the data they produce.
 
 ## Features
 
-- Fetch OHLCV data from Tiingo, Tiingo Crypto and Coinbase
+- Fetch OHLCV data from Tiingo, Tiingo Crypto, Coinbase and Binance, at periods from
+  1 minute to monthly
 - Calculate user-specified technical indicators with a small expression language
 - Screen a whole market with a filter expression
 - Write results to CSV and/or Parquet, with Hive-style partitioning, physical sorting and
@@ -85,7 +86,8 @@ scan -config=config.yaml
 | `-config` | | YAML config file: load if present, save if not |
 | `-start` | `2024-01-01` | Start date, `YYYY-MM-DD` |
 | `-end` | today | End date, `YYYY-MM-DD` |
-| `-source` | `tiingo` | `tiingo`, `tiingo-crypto` or `coinbase` |
+| `-source` | `tiingo` | Data source (see `-list-sources`) |
+| `-period` | `d` | Bar period; the supported set varies by source |
 | `-tiingo-token` | `$TIINGO_API_TOKEN` | Tiingo API token |
 | `-tickers` | | Comma or pipe separated symbols |
 | `-market` | | Market to expand into symbols (see `-list-markets`) |
@@ -102,12 +104,40 @@ scan -config=config.yaml
 | `-concurrency` | `6` | Tickers fetched at once |
 | `-cache-dir` | user cache dir | Quote cache location |
 | `-no-cache` | off | Bypass the quote cache |
+| `-list-sources` | | List data sources and the periods each serves |
 | `-list-markets` | | List available markets |
 | `-list-ta` | | List available functions |
 | `-version` | | Print the version |
 
 Parquet-specific flags: `-parquet-compression`, `-parquet-partition-by`,
 `-parquet-partition-date-format`, `-parquet-sort-by`, `-parquet-row-group-size`.
+
+## Sources and periods
+
+`scan -list-sources` prints the sources and what each one serves. The list comes from
+go-quote's provider registry, so a provider added there appears here with no change to
+go-scan:
+
+```text
+binance        1m 3m 5m 15m 30m 1h 2h 4h 6h 8h 12h d 3d w m
+coinbase       1m 5m 15m 30m 1h d w
+tiingo         d w m
+tiingo-crypto  1m 3m 5m 15m 30m 1h 2h 4h 6h 8h 12h d
+```
+
+Asking a source for a period it does not serve is rejected before anything is fetched:
+
+```sh
+$ scan -source=tiingo -period=3d -tickers=AAPL
+error: period: invalid period "3d" for source "tiingo", must be one of: d, w, m
+```
+
+`tiingo` and `tiingo-crypto` need an API token; `coinbase` and `binance` do not. Binance
+symbols have no separator (`BTCUSDT`), Coinbase uses a dash (`BTC-USD`).
+
+For daily and coarser periods the `date` column holds a bare `2006-01-02` date. For
+intraday periods it holds `2006-01-02 15:04:05`, since otherwise every bar in a day would
+carry the same value — which would also collide when pivoting on date.
 
 ## Expressions
 

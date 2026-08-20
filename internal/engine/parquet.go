@@ -27,6 +27,15 @@ const (
 	TypeTimestamp
 )
 
+// parseDateCell parses a date column value. Intraday runs carry a timestamp,
+// everything else a bare date.
+func parseDateCell(value string) (time.Time, error) {
+	if t, err := time.Parse(TimestampLayout, value); err == nil {
+		return t, nil
+	}
+	return time.Parse(DateLayout, value)
+}
+
 // detectColumnType analyzes sample rows to infer the column type
 func detectColumnType(colName string, values []string) ColumnType {
 	// Date column is always timestamp
@@ -113,7 +122,7 @@ func convertRowsToArrowTable(headers []string, rows [][]string, schema *arrow.Sc
 			switch b := builders[i].(type) {
 			case *array.TimestampBuilder:
 				// Parse date string to timestamp
-				if t, err := time.Parse("2006-01-02", val); err == nil {
+				if t, err := parseDateCell(val); err == nil {
 					b.Append(arrow.Timestamp(t.UnixMilli()))
 				} else {
 					b.AppendNull()
@@ -228,7 +237,7 @@ func partitionDataByColumns(headers []string, rows [][]string, partitionCols []s
 
 			// Handle date partitioning with format
 			if partCol == "date" && dateFormat != "" {
-				if t, err := time.Parse("2006-01-02", value); err == nil {
+				if t, err := parseDateCell(value); err == nil {
 					dateParts := strings.Split(dateFormat, ",")
 					for _, part := range dateParts {
 						part = strings.TrimSpace(part)

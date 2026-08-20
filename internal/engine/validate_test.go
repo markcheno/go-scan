@@ -22,8 +22,45 @@ func TestValidateAcceptsAGoodConfig(t *testing.T) {
 	}
 }
 
-// etf is listed as a valid market but go-quote has no URL for it; go-scan
-// resolves it through NewEtfList instead, so it must not be rejected.
+// Every period a source advertises must pass validation for that source, and
+// the set really does differ: Binance serves 15, Tiingo 3.
+func TestValidateAcceptsEveryAdvertisedPeriod(t *testing.T) {
+	for _, source := range Sources() {
+		periods := Periods(source)
+		if len(periods) == 0 {
+			t.Errorf("source %q advertises no periods", source)
+		}
+		for _, period := range periods {
+			cfg := validConfig()
+			cfg.Source = source
+			cfg.Period = period
+			cfg.TiingoToken = "token"
+
+			for _, p := range Validate(&cfg) {
+				if p.Field == "period" {
+					t.Errorf("%s/%s rejected: %s", source, period, p.Message)
+				}
+			}
+		}
+	}
+}
+
+// An empty period means daily, so configs written before the field existed keep
+// working unchanged.
+func TestValidateEmptyPeriodMeansDaily(t *testing.T) {
+	cfg := validConfig()
+	cfg.Period = ""
+	if problems := Validate(&cfg); len(problems) != 0 {
+		t.Fatalf("an empty period should be accepted: %v", problems)
+	}
+	got, err := ParsePeriod("")
+	if err != nil || string(got) != "d" {
+		t.Errorf("ParsePeriod(\"\") = %q, %v; want d", got, err)
+	}
+}
+
+// Every market go-quote lists must be resolvable, including etf, which is the
+// one served over FTP rather than an HTTP JSON API.
 func TestValidateAcceptsEveryListedMarket(t *testing.T) {
 	for _, market := range Markets() {
 		cfg := validConfig()
@@ -50,6 +87,18 @@ func TestValidate(t *testing.T) {
 		{"end before start", func(c *Config) { c.EndDate = "2023-01-01" }, "end_date"},
 		{"over-long date does not panic", func(c *Config) { c.StartDate = "2024-01-01 00:00:00.000" }, "start_date"},
 		{"unknown source", func(c *Config) { c.Source = "bloomberg" }, "source"},
+		{"unknown period", func(c *Config) { c.Period = "fortnightly" }, "period"},
+		// 3d is a real period, but only Binance serves it.
+		{"period the source does not serve", func(c *Config) {
+			c.Source = "tiingo"
+			c.TiingoToken = "token"
+			c.Period = "3d"
+		}, "period"},
+		{"intraday period on a daily-only source", func(c *Config) {
+			c.Source = "tiingo"
+			c.TiingoToken = "token"
+			c.Period = "1h"
+		}, "period"},
 		{"tiingo needs a token", func(c *Config) { c.Source = "tiingo"; c.TiingoToken = "" }, "tiingo_token"},
 		{"unknown market", func(c *Config) { c.Market = "ftse" }, "market"},
 		{"tiingo market needs a token", func(c *Config) { c.Market = "tiingo-btc"; c.TiingoToken = "" }, "market"},

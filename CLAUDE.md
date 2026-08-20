@@ -32,6 +32,7 @@ scan -serve -open                     # web UI on 127.0.0.1:8080
 scan -serve -dev                      # serve web assets from disk, no rebuild needed
 scan -config=config.yaml              # run from a config file
 scan -tickers=AAPL,MSFT -start=2024-01-01 -columns="sma20=sma(c,20)"
+scan -list-sources
 scan -list-markets
 scan -list-ta
 ```
@@ -44,10 +45,15 @@ the web UI cannot drift from what the CLI does.
 
 ### internal/engine
 
-**config.go** — `Config` (the whole option surface, 20 persisted YAML fields), `StringList`
+**config.go** — `Config` (the whole option surface, 21 persisted YAML fields), `StringList`
 (accepts a YAML sequence or a pipe/comma delimited scalar; always marshals back as a
 sequence), and `LoadConfig`/`SaveConfig`/`MarshalConfig`/`HandleConfig`. `MarshalConfig`
 uses the same encoder as `SaveConfig` so a rendered preview is byte-identical to the file.
+
+`Sources()`, `Periods(source)` and `Markets()` all read go-quote's registries rather than
+hardcoding anything, so a provider or market added upstream needs no change here. The one
+thing the registry does not describe is credentials, so which sources need a token is still
+knowledge go-scan holds itself, in `validateUniverse`.
 
 **validate.go** — `Validate(cfg) []FieldError`. Every problem carries the field name (and
 list index) it belongs to, plus an error/warning severity, so the CLI and the web UI report
@@ -78,7 +84,7 @@ and `MaxBars` — the last three are what make the UI's live preview cheap witho
 code path. Per-ticker failures land in `Result.Errors` and the run continues.
 
 **fetch.go** — source dispatch, bounded-parallel fetching, and a JSON file cache under the
-user cache dir keyed by source/ticker/date range. Ranges ending today expire after an hour;
+user cache dir keyed by source/ticker/date range/period. Ranges ending today expire after an hour;
 historical ranges never do. `Fetcher` and `MarketLister` are interfaces so tests run without
 network access.
 
@@ -129,9 +135,11 @@ Two things to preserve when editing `app.js`:
 - `tiingo` — requires `TIINGO_API_TOKEN` or `-tiingo-token`
 - `tiingo-crypto` — same token
 - `coinbase` — no token
+- `binance` — no token
 
-Yahoo was removed: its endpoint stopped returning quote data and upstream go-quote dropped
-it. Only daily bars are requested.
+The set is not hardcoded; it is `quote.ProviderNames()`. Each provider advertises the periods
+it serves and `Validate` rejects a mismatch up front, so `-source=tiingo -period=3d` fails
+before any request. Yahoo was removed upstream: its endpoint stopped returning quote data.
 
 ## Expression syntax
 
@@ -154,9 +162,11 @@ ticker's last row: `-filter="close > 100 && rsi2 < 30"`.
   (`close` becomes `AAPL_close`).
 - `sharpe` divides by the variance rather than the standard deviation and is not
   annualized, so it is not really a Sharpe ratio. Kept as-is for compatibility.
-- `-market=etf` is a special case: go-quote lists it as valid but has no URL for it, so
-  `NewMarketList("etf")` fails on an empty request. `listMarket` in fetch.go routes it to
-  `NewEtfList()` instead, which fetches the ~4400-symbol directory over anonymous FTP.
+- `-market=etf` is the one market not served by an HTTP JSON API: go-quote fetches the
+  ~4400-symbol NASDAQ directory over anonymous FTP. It is handled inside go-quote now.
+- The `date` column is a bare date for daily and coarser periods and a
+  `2006-01-02 15:04:05` timestamp for intraday ones — see `DateColumnLayout`. Without that,
+  every intraday bar in a day would share one date value and pivoting on date would collide.
 - Market membership is cached for 24 hours; quote ranges ending today expire after an hour
   and historical ranges never do. That comparison is by calendar date, not instant, so it
   stays correct in timezones whose local date differs from UTC's.

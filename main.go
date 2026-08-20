@@ -21,6 +21,7 @@ var Version = "dev"
 // cliFlags holds the options that are not part of the persisted config.
 type cliFlags struct {
 	config      string
+	listSources bool
 	listMarkets bool
 	listTA      bool
 	version     bool
@@ -38,6 +39,7 @@ func main() {
 	var cli cliFlags
 
 	flag.StringVar(&cli.config, "config", "", "Configuration file path (load if it exists, save if it does not)")
+	flag.BoolVar(&cli.listSources, "list-sources", false, "List available data sources and the periods each one serves")
 	flag.BoolVar(&cli.listMarkets, "list-markets", false, "List available markets")
 	flag.BoolVar(&cli.listTA, "list-ta", false, "List available technical analysis functions")
 	flag.BoolVar(&cli.version, "version", false, "Print version information")
@@ -60,7 +62,8 @@ func main() {
 	flag.IntVar(&cfg.Truncate, "truncate", cfg.Truncate, "Number of rows to truncate from the beginning of each ticker")
 	flag.BoolVar(&cfg.Pivot, "pivot", cfg.Pivot, "Pivot the data")
 	flag.StringVar(&cfg.Filter, "filter", cfg.Filter, "Filter expression applied to the last row of each ticker")
-	flag.StringVar(&cfg.Source, "source", cfg.Source, "Data source ("+strings.Join(engine.Sources, "|")+")")
+	flag.StringVar(&cfg.Source, "source", cfg.Source, "Data source ("+strings.Join(engine.Sources(), "|")+")")
+	flag.StringVar(&cfg.Period, "period", cfg.Period, "Bar period; supported values vary by source (see -list-sources)")
 	flag.Var(&cfg.Tickers, "tickers", "Comma or pipe separated list of tickers")
 	flag.StringVar(&cfg.Market, "market", cfg.Market, "Market to fetch tickers from (see -list-markets)")
 	flag.Float64Var(&cfg.SplitPct, "split-pct", cfg.SplitPct, "Fraction of data to use for training")
@@ -75,6 +78,13 @@ func main() {
 
 	if cli.version {
 		fmt.Printf("go-scan version %s\n", Version)
+		return
+	}
+	if cli.listSources {
+		fmt.Println("Available data sources:")
+		for _, source := range engine.Sources() {
+			fmt.Printf("\t%-14s %s\n", source, strings.Join(engine.Periods(source), " "))
+		}
 		return
 	}
 	if cli.listMarkets {

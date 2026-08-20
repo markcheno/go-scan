@@ -27,13 +27,55 @@ await page.waitForTimeout(800);
 const title = await page.title();
 title === 'go-scan' ? ok(`title "${title}"`) : fail(`title is "${title}"`);
 
-// The selects are populated from /api/meta.
+// The selects are populated from /api/meta, which derives them from go-quote's
+// registries. Assert against that rather than a count that changes whenever a
+// provider or market is added upstream.
+const meta = await page.evaluate(async () => {
+  const res = await fetch('/api/meta', { headers: { 'X-Scan-Token': window.SCAN_TOKEN } });
+  return res.json();
+});
 const sources = await page.$$eval('#f-source option', (o) => o.map((x) => x.value));
-sources.length === 3 ? ok(`sources ${sources.join(', ')}`) : fail(`sources = ${JSON.stringify(sources)}`);
+JSON.stringify(sources) === JSON.stringify(meta.sources)
+  ? ok(`sources match the registry: ${sources.join(', ')}`)
+  : fail(`sources = ${JSON.stringify(sources)}, meta = ${JSON.stringify(meta.sources)}`);
+sources.includes('binance') ? ok('binance is selectable') : fail('binance missing from sources');
+
 const markets = await page.$$eval('#f-market option', (o) => o.map((x) => x.value));
-markets[0] === '' && markets.length === 27
-  ? ok(`markets: ${markets.length} incl. an empty "(none)"`)
-  : fail(`market options = ${markets.length}, first = ${JSON.stringify(markets[0])}`);
+markets[0] === '' && JSON.stringify(markets.slice(1)) === JSON.stringify(meta.markets)
+  ? ok(`markets: ${meta.markets.length} plus an empty "(none)"`)
+  : fail(`market options do not match meta (${markets.length} vs ${meta.markets.length + 1})`);
+markets.includes('etf') && markets.some((m) => m.startsWith('binance-'))
+  ? ok('etf and the binance-* markets are offered')
+  : fail('etf or binance-* markets missing');
+
+console.log('\n== period picker follows the source ==');
+await page.selectOption('#f-source', 'binance');
+await page.waitForTimeout(200);
+const binancePeriods = await page.$$eval('#f-period option', (o) => o.map((x) => x.value));
+binancePeriods.length === 15 && binancePeriods.includes('3d')
+  ? ok(`binance offers ${binancePeriods.length} periods incl. 3d`)
+  : fail(`binance periods = ${JSON.stringify(binancePeriods)}`);
+
+// Pick a period only Binance serves, then switch to a source that does not.
+await page.selectOption('#f-period', '3d');
+await page.selectOption('#f-source', 'tiingo');
+await page.waitForTimeout(200);
+const tiingoPeriods = await page.$$eval('#f-period option', (o) => o.map((x) => x.value));
+JSON.stringify(tiingoPeriods) === JSON.stringify(['d', 'w', 'm'])
+  ? ok('tiingo collapses to d/w/m')
+  : fail(`tiingo periods = ${JSON.stringify(tiingoPeriods)}`);
+(await page.locator('#f-period').inputValue()) === 'd'
+  ? ok('an unsupported period falls back to daily')
+  : fail(`period stayed ${await page.locator('#f-period').inputValue()}`);
+
+// A period the source keeps is preserved across a source change.
+await page.selectOption('#f-source', 'binance');
+await page.selectOption('#f-period', '1h');
+await page.selectOption('#f-source', 'coinbase');
+await page.waitForTimeout(200);
+(await page.locator('#f-period').inputValue()) === '1h'
+  ? ok('a still-valid period survives a source change')
+  : fail(`period became ${await page.locator('#f-period').inputValue()}`);
 
 console.log('\n== conditional fields ==');
 await page.selectOption('#f-source', 'coinbase');

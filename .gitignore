@@ -5,8 +5,11 @@ scan
 *.yaml
 *.yml
 *.log
+*.parquet
 .vscode
 .DS_Store
 notebooks
 data
 test
+test_output/
+node_modules/

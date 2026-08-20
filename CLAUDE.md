@@ -9,7 +9,7 @@ go-scan fetches OHLCV (Open, High, Low, Close, Volume) data for stock tickers, c
 ## Build and Test Commands
 
 ```bash
-go build -o scan .          # build
+go build -o scan ./cmd/scan # build
 go test ./... -race         # run all tests
 go test ./internal/engine -run TestName -v
 go mod tidy
@@ -29,7 +29,7 @@ The browser smoke test for the web UI is separate and needs Playwright; see
 
 ```bash
 scan -serve -open                     # web UI on 127.0.0.1:8080
-scan -serve -dev                      # serve web assets from disk, no rebuild needed
+go run ./cmd/scan -serve -dev         # web assets from disk, run from the repo root
 scan -config=config.yaml              # run from a config file
 scan -tickers=AAPL,MSFT -start=2024-01-01 -columns="sma20=sma(c,20)"
 scan -list-sources
@@ -39,7 +39,7 @@ scan -list-ta
 
 ## Architecture
 
-Three packages. `main` is a thin CLI shell; everything real lives in `internal/engine`,
+Three packages. `cmd/scan` is a thin CLI shell; everything real lives in `internal/engine`,
 and `internal/server` is an HTTP layer over it. Both entry points share one code path, so
 the web UI cannot drift from what the CLI does.
 

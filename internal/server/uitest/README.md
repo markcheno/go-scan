@@ -11,7 +11,7 @@ Playwright is not a dependency of go-scan; install it only when you want to run 
 ```sh
 npm init -y && npm install playwright && npx playwright install chromium
 
-go build -o scan .
+go build -o scan ./cmd/scan
 ./scan -serve -addr 127.0.0.1:8899 &
 
 BASE=http://127.0.0.1:8899 SHOTS=/tmp node internal/server/uitest/uitest.mjs

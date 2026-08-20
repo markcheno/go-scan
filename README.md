@@ -19,8 +19,12 @@ web app for building configurations and previewing the data they produce.
 ## Installation
 
 ```sh
-go install github.com/markcheno/go-scan@latest
+go install github.com/markcheno/go-scan/cmd/scan@latest
 ```
+
+That installs a binary named `scan` into your `GOBIN`. The `cmd/scan` suffix matters:
+`go install` names the binary after the last element of the path, so installing the module
+root would give you `go-scan` instead.
 
 ## The web UI
 
@@ -179,7 +183,7 @@ go test ./... -race
 
 # Edit the UI without rebuilding. -dev reads internal/server/web from the
 # working directory, so run it from the repo root.
-go run . -serve -dev
+go run ./cmd/scan -serve -dev
 ```
 
 A few tests need network access and are opt-in:
@@ -193,7 +197,7 @@ The browser smoke test for the UI is separate and needs Playwright; see
 
 Layout:
 
-- `main.go` — command-line entry point
+- `cmd/scan` — command-line entry point
 - `internal/engine` — config, validation, the expression language, the scan pipeline and writers
 - `internal/server` — HTTP API and the embedded web UI under `internal/server/web`
 
